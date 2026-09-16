@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-research-article-fetcher",
-	"version": "1.4.13",
+	"version": "1.4.14",
 	"description": "Obsidian plugin to fetch research article metadata from PubMed, PMC, DOI, arXiv, and Web of Science",
 	"main": "main.js",
 	"scripts": {
