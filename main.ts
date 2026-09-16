@@ -396,7 +396,7 @@ export default class ResearchArticleFetcherPlugin extends Plugin {
 	private async writeFailureIndex(failures: LinkFailure[]): Promise<void> {
 		const existing = this.app.vault.getAbstractFileByPath(this.failureIndexPath);
 		if (failures.length === 0) {
-			if (existing instanceof TFile) await this.app.vault.delete(existing);
+			if (existing instanceof TFile) await this.app.fileManager.trashFile(existing);
 			return;
 		}
 

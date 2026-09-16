@@ -1354,7 +1354,7 @@ var ResearchArticleFetcherPlugin = class extends import_obsidian3.Plugin {
     var _a, _b;
     const existing = this.app.vault.getAbstractFileByPath(this.failureIndexPath);
     if (failures.length === 0) {
-      if (existing instanceof import_obsidian3.TFile) await this.app.vault.delete(existing);
+      if (existing instanceof import_obsidian3.TFile) await this.app.fileManager.trashFile(existing);
       return;
     }
     const lines = [
