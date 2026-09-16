@@ -3,10 +3,8 @@ import { failureMarkerSymbol, renderIcon } from './icons';
 
 const PERMANENT_MARKER = failureMarkerSymbol('permanent');
 const TRANSIENT_MARKER = failureMarkerSymbol('transient');
-const MARKER_SOURCE = '(?:🔴|🟡)\\([^)]*\\)';
-const ICON_SOURCE = '!\\[[^\\]]*\\]\\([^)]*\\)';
-const TRAILING_MARKER_PATTERN = new RegExp(`^\\s*${MARKER_SOURCE}(?:\\s*${ICON_SOURCE})?`);
-const LEADING_MARKER_PATTERN = new RegExp(`${MARKER_SOURCE}\\s*(?:${ICON_SOURCE}\\s*)?$`);
+const TRAILING_MARKER_PATTERN = /^\s*(?:🔴|🟡)\([^)]*\)(?:\s*!\[[^\]]*\]\([^)]*\))?/;
+const LEADING_MARKER_PATTERN = /(?:🔴|🟡)\([^)]*\)\s*(?:!\[[^\]]*\]\([^)]*\)\s*)?$/;
 
 export function failureMarker(markerKey: string, kind: FailureKind): string {
 	return `${kind === 'permanent' ? PERMANENT_MARKER : TRANSIENT_MARKER}(${markerKey})`;
@@ -412,10 +410,13 @@ export function replaceArxivUrl(content: string, arxivId: string, citation: stri
 	return replaceAnyIgnoreCase(content, urls, citation);
 }
 
+const WOS_RECORD_URL_PATTERN =
+	/https?:\/\/(?:www\.)?webofscience\.com\/wos\/\w+\/full-record\/[\w:]+\/?/gi;
+
 export function replaceWosUrl(content: string, wosId: string, citation: string): string {
-	const urlRegex = new RegExp(
-		`(${MARKER_SOURCE}\\s*(?:${ICON_SOURCE}\\s*)?)?https?:\\/\\/(?:www\\.)?webofscience\\.com\\/wos\\/\\w+\\/full-record\\/${wosId}\\/?(\\s*${MARKER_SOURCE})?`,
-		'gi'
+	const recordPath = `/full-record/${wosId}`.toLowerCase();
+	const urls = (content.match(WOS_RECORD_URL_PATTERN) ?? []).filter((match) =>
+		match.replace(/\/$/, '').toLowerCase().endsWith(recordPath)
 	);
-	return replaceAnyIgnoreCase(content.replace(urlRegex, citation), [wosId], citation);
+	return replaceAnyIgnoreCase(content, [wosId, ...urls], citation);
 }

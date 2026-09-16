@@ -430,6 +430,27 @@ describe('parseArxivEntry', () => {
 		expect(info.arxivId).toBe('hep-th/9901001');
 		expect(info.title).toBe('Legacy Paper');
 	});
+
+	it('should skip tags that only prefix-match the requested tag name', () => {
+		const xml = `<feed><entry>
+			<idx>not-an-entry-id</idx>
+			<id>http://arxiv.org/abs/2609.12218v1</id>
+			<published>2026-01-15T00:00:00Z</published>
+			<title>Prefix Match Paper</title>
+		</entry></feed>`;
+		const info = parseArxivEntry(xml, '2609.12218');
+		expect(info.arxivId).toBe('2609.12218');
+		expect(info.title).toBe('Prefix Match Paper');
+	});
+
+	it('should treat an unclosed tag as missing', () => {
+		const xml = `<feed><entry>
+			<id>http://arxiv.org/abs/2609.12218v1</id>
+			<published>2026-01-15T00:00:00Z</published>
+			<title>Unclosed
+		</entry></feed>`;
+		expect(parseArxivEntry(xml, '2609.12218').title).toBe('No title available');
+	});
 });
 
 describe('parseArxivFeed', () => {

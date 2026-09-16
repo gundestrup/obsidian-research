@@ -113,10 +113,8 @@ function articleTypeIcon(articleType) {
 // src/utils.ts
 var PERMANENT_MARKER = failureMarkerSymbol("permanent");
 var TRANSIENT_MARKER = failureMarkerSymbol("transient");
-var MARKER_SOURCE = "(?:\u{1F534}|\u{1F7E1})\\([^)]*\\)";
-var ICON_SOURCE = "!\\[[^\\]]*\\]\\([^)]*\\)";
-var TRAILING_MARKER_PATTERN = new RegExp(`^\\s*${MARKER_SOURCE}(?:\\s*${ICON_SOURCE})?`);
-var LEADING_MARKER_PATTERN = new RegExp(`${MARKER_SOURCE}\\s*(?:${ICON_SOURCE}\\s*)?$`);
+var TRAILING_MARKER_PATTERN = /^\s*(?:🔴|🟡)\([^)]*\)(?:\s*!\[[^\]]*\]\([^)]*\))?/;
+var LEADING_MARKER_PATTERN = /(?:🔴|🟡)\([^)]*\)\s*(?:!\[[^\]]*\]\([^)]*\)\s*)?$/;
 function failureMarker(markerKey, kind) {
   return `${kind === "permanent" ? PERMANENT_MARKER : TRANSIENT_MARKER}(${markerKey})`;
 }
@@ -408,12 +406,14 @@ function replaceArxivUrl(content, arxivId, citation) {
   urls.push(`arXiv:${arxivId}`);
   return replaceAnyIgnoreCase(content, urls, citation);
 }
+var WOS_RECORD_URL_PATTERN = /https?:\/\/(?:www\.)?webofscience\.com\/wos\/\w+\/full-record\/[\w:]+\/?/gi;
 function replaceWosUrl(content, wosId, citation) {
-  const urlRegex = new RegExp(
-    `(${MARKER_SOURCE}\\s*(?:${ICON_SOURCE}\\s*)?)?https?:\\/\\/(?:www\\.)?webofscience\\.com\\/wos\\/\\w+\\/full-record\\/${wosId}\\/?(\\s*${MARKER_SOURCE})?`,
-    "gi"
+  var _a;
+  const recordPath = `/full-record/${wosId}`.toLowerCase();
+  const urls = ((_a = content.match(WOS_RECORD_URL_PATTERN)) != null ? _a : []).filter(
+    (match) => match.replace(/\/$/, "").toLowerCase().endsWith(recordPath)
   );
-  return replaceAnyIgnoreCase(content.replace(urlRegex, citation), [wosId], citation);
+  return replaceAnyIgnoreCase(content, [wosId, ...urls], citation);
 }
 
 // src/api.ts
@@ -738,10 +738,22 @@ function decodeXmlEntities(text) {
   });
 }
 function extractXmlTag(xml, tag) {
-  const match = xml.match(new RegExp(`<${tag}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${tag}>`));
-  if (!match) return void 0;
-  const value = decodeXmlEntities(match[1].trim().replace(/\s+/g, " "));
-  return value || void 0;
+  const openTag = `<${tag}`;
+  const closeTag = `</${tag}>`;
+  let openIndex = xml.indexOf(openTag);
+  while (openIndex !== -1) {
+    const boundary = xml.charAt(openIndex + openTag.length);
+    if (boundary !== ">" && !/\s/.test(boundary)) {
+      openIndex = xml.indexOf(openTag, openIndex + 1);
+      continue;
+    }
+    const closeIndex = xml.indexOf(closeTag, openIndex);
+    if (closeIndex === -1) return void 0;
+    const openEnd = xml.indexOf(">", openIndex);
+    const value = decodeXmlEntities(xml.slice(openEnd + 1, closeIndex).trim().replace(/\s+/g, " "));
+    return value || void 0;
+  }
+  return void 0;
 }
 function entryBaseId(entryXml) {
   var _a;

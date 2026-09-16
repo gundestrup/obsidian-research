@@ -9,8 +9,9 @@
 		"preversion": "node version-bump.mjs --preversion",
 		"version": "node version-bump.mjs",
 		"postversion": "git push && git push --tags",
-		"release": "npm run lint && npm test && npm run build",
+		"release": "npm run lint && npm test && npm run build && npm run security",
 		"lint": "eslint **/*.ts",
+		"security": "semgrep scan --config .semgrep.yml --error --exclude main.js --exclude node_modules .",
 		"test": "vitest run",
 		"test:watch": "vitest",
 		"test:coverage": "vitest run --coverage"

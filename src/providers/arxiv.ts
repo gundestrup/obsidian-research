@@ -25,10 +25,22 @@ function decodeXmlEntities(text: string): string {
 }
 
 function extractXmlTag(xml: string, tag: string): string | undefined {
-	const match = xml.match(new RegExp(`<${tag}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${tag}>`));
-	if (!match) return undefined;
-	const value = decodeXmlEntities(match[1].trim().replace(/\s+/g, ' '));
-	return value || undefined;
+	const openTag = `<${tag}`;
+	const closeTag = `</${tag}>`;
+	let openIndex = xml.indexOf(openTag);
+	while (openIndex !== -1) {
+		const boundary = xml.charAt(openIndex + openTag.length);
+		if (boundary !== '>' && !/\s/.test(boundary)) {
+			openIndex = xml.indexOf(openTag, openIndex + 1);
+			continue;
+		}
+		const closeIndex = xml.indexOf(closeTag, openIndex);
+		if (closeIndex === -1) return undefined;
+		const openEnd = xml.indexOf('>', openIndex);
+		const value = decodeXmlEntities(xml.slice(openEnd + 1, closeIndex).trim().replace(/\s+/g, ' '));
+		return value || undefined;
+	}
+	return undefined;
 }
 
 function entryBaseId(entryXml: string): string | undefined {
