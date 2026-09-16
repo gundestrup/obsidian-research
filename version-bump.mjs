@@ -84,6 +84,10 @@ if (isPreversion) {
         console.log("  🔨 Building plugin...");
         runNpm(["run", "build"]);
         console.log("  ✅ Build successful");
+
+        console.log("  🔒 Running security scan...");
+        runNpm(["run", "security"]);
+        console.log("  ✅ Security scan passed");
     } catch (error) {
         console.error("\n❌ ERROR: Quality checks failed!");
         console.error("Please fix the above issues before releasing.");

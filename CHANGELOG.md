@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## [1.4.13] - 2026-09-16
+
+### Fixed
+
+- Eliminated all `new RegExp` usages flagged by the custom Semgrep ReDoS rule: failure-marker patterns are now regex literals, `replaceWosUrl` suffix-matches the record ID instead of interpolating it into a `RegExp`, and arXiv XML tags are extracted with string scanning.
+
+### Changed
+
+- Added `npm run security` (local Semgrep rules) to `npm run release` so scan findings surface before pushing.
+- Codecov coverage uploads now fail the CI job when they error instead of being silently masked.
+
 ## [1.4.12] - 2026-09-16
 
 ### Added
