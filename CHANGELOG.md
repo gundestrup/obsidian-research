@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [1.4.14] - 2026-09-16
+
+### Fixed
+
+- The unmatched-reference index note is now removed via `FileManager.trashFile()` instead of `Vault.delete()`, respecting the user's configured file deletion preference.
+
 ## [1.4.13] - 2026-09-16
 
 ### Fixed
