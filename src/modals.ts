@@ -1,4 +1,5 @@
 import { App, Modal, Setting } from 'obsidian';
+import { APP_ICONS } from './icons';
 
 export class FolderSelectionModal extends Modal {
 	onSubmit: (folder: string) => void;
@@ -21,11 +22,11 @@ export class FolderSelectionModal extends Modal {
 		const folders = allFiles
 			.filter((f) => 'children' in f)
 			.map((f) => f.path)
-			.sort();
+			.sort((a, b) => a.localeCompare(b));
 
 		const allNotesBtn = contentEl.createEl('button', {
-			text: '📁 All notes in vault',
-			cls: 'pubmed-fetcher-button-full',
+			text: `${APP_ICONS.ui.folder.value} All notes in vault`,
+			cls: 'research-article-fetcher-button-full',
 		});
 		allNotesBtn.onclick = () => {
 			this.onSubmit('/');
@@ -34,15 +35,15 @@ export class FolderSelectionModal extends Modal {
 
 		contentEl.createEl('p', { text: 'Or select a specific folder' });
 
-		const folderList = contentEl.createDiv({ cls: 'pubmed-fetcher-folder-list' });
+		const folderList = contentEl.createDiv({ cls: 'research-article-fetcher-folder-list' });
 
 		if (folders.length === 0) {
 			folderList.createEl('p', { text: 'No folders found in the vault' });
 		} else {
 			folders.forEach((folder) => {
 				const folderBtn = folderList.createEl('button', {
-					text: `📁 ${folder || '(root)'}`,
-					cls: 'pubmed-fetcher-folder-button',
+					text: `${APP_ICONS.ui.folder.value} ${folder || '(root)'}`,
+					cls: 'research-article-fetcher-folder-button',
 				});
 				folderBtn.onclick = () => {
 					this.onSubmit(folder);
@@ -53,7 +54,7 @@ export class FolderSelectionModal extends Modal {
 
 		const cancelBtn = contentEl.createEl('button', {
 			text: 'Cancel',
-			cls: 'pubmed-fetcher-button-cancel',
+			cls: 'research-article-fetcher-button-cancel',
 		});
 		cancelBtn.onclick = () => {
 			this.close();
@@ -78,13 +79,13 @@ export class ArticleInputModal extends Modal {
 		const { contentEl } = this;
 
 		new Setting(contentEl)
-			.setName('Enter PubMed ID or DOI')
+			.setName('Enter article ID or URL')
 			.setHeading();
 
 		const input = contentEl.createEl('input', {
 			type: 'text',
-			placeholder: 'PubMed ID (e.g., 38570095) or DOI (e.g., 10.1016/j.clinme.2024.100038)',
-			cls: 'pubmed-fetcher-input',
+			placeholder: 'PubMed ID, DOI, PMC ID, arXiv ID, or WOS ID',
+			cls: 'research-article-fetcher-input',
 		});
 
 		const submitBtn = contentEl.createEl('button', { text: 'Fetch article' });

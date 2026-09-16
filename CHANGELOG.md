@@ -2,13 +2,29 @@
 
 ## [Unreleased]
 
-### Fixed
+## [1.4.12] - 2026-09-16
 
-- Set explicit `sonar.sources` in `.sonarcloud.properties` so the source set no longer overlaps `sonar.tests`, which was failing every SonarCloud analysis.
+### Added
+
+- Added arXiv and Web of Science providers with provider-owned translation layers and citation identities.
+- Added batch fetching for arXiv, PubMed, PMC, and DOI references where the APIs support it.
+- Added red permanent-failure and yellow transient-failure markers with retry and force-update behavior.
+- Added an optional, configurable unmatched-reference index note with a direct-open command.
+- Added a central typed icon catalog and canonical article-type icons used in citations and generated notes.
 
 ### Changed
 
-- Set `min-release-age=7` in `.npmrc` so newly published package versions must age seven days before npm resolves them (Semgrep supply-chain finding).
+- Renamed the plugin display name to Research Article Fetcher while preserving the stable `pubmed-fetcher` plugin ID.
+- Renamed user-visible commands and internal branding to Research Article Fetcher.
+- Changed the default unmatched-reference note to `research-article-unmatched.md`.
+- Set explicit `sonar.sources` in `.sonarcloud.properties` so the source set no longer overlaps `sonar.tests` and keeps the generated `main.js` bundle out of scope.
+- Set `min-release-age=7` in `.npmrc` so newly published package versions must age seven days before npm resolves them.
+
+### Fixed
+
+- Improved provider-specific citation ordering, canonical URLs, and logo handling.
+- Added locale-aware folder sorting with `String.localeCompare`.
+- Reached 100% statement, branch, function, and line coverage on unit-testable modules.
 
 ## [1.4.11] - 2026-09-13
 

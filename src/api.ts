@@ -1,64 +1,29 @@
 import type {
-	ArticleInfo,
 	PubMedResult,
 	PubMedApiResponse,
 	PubMedSearchResponse,
+	CrossRefMessage,
 	CrossRefResponse,
+	WosDocument,
 	RequestUrlResponse,
 } from './types';
-import { cleanDOI } from './utils';
 
-export type RequestFunction = (params: { url: string }) => Promise<RequestUrlResponse>;
+export type RequestFunction = (params: {
+	url: string;
+	headers?: Record<string, string>;
+}) => Promise<RequestUrlResponse>;
 
-export function parsePubMedResult(
-	result: PubMedResult,
-	pubmedId: string,
-	defaultArticleType: string
-): ArticleInfo {
-	let doi = '';
-	let pmcId = '';
-
-	if (result.doi) {
-		doi = cleanDOI(result.doi);
-	} else if (result.elocationid) {
-		doi = cleanDOI(result.elocationid);
-	}
-
-	if (result.articleids) {
-		const doiObj = result.articleids.find((id) => id.idtype === 'doi');
-		if (doiObj && !doi) {
-			doi = cleanDOI(doiObj.value);
-		}
-
-		const pmcObj = result.articleids.find((id) => id.idtype === 'pmc');
-		if (pmcObj) {
-			pmcId = pmcObj.value;
-			if (!pmcId.startsWith('PMC')) {
-				pmcId = 'PMC' + pmcId;
-			}
-		}
-	}
-
-	return {
-		title: result.title || 'No title available',
-		journal: result.source || result.fulljournalname || 'No journal available',
-		year: result.pubdate ? result.pubdate.split(' ')[0] : 'No year available',
-		pubmedId: pubmedId,
-		doi: doi,
-		pmcId: pmcId,
-		articleType: result.pubtype?.[0] || defaultArticleType || 'Article',
-	};
-}
-
-export async function fetchPubMedApiData(
-	pubmedId: string,
+export async function fetchPubMedResults(
+	pubmedIds: string[],
 	apiKey: string,
 	requestFn: RequestFunction
-): Promise<ArticleInfo> {
+): Promise<PubMedResult[]> {
+	if (pubmedIds.length === 0) return [];
+
 	const baseUrl = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi';
 	const params = new URLSearchParams({
 		db: 'pubmed',
-		id: pubmedId,
+		id: pubmedIds.join(','),
 		retmode: 'json',
 		version: '2.0',
 	});
@@ -74,13 +39,77 @@ export async function fetchPubMedApiData(
 	}
 
 	const data = response.json as PubMedApiResponse;
-	const result = data.result?.[pubmedId];
+	const result = data.result ?? {};
+	const uids = result.uids ?? Object.keys(result).filter((key) => key !== 'uids');
+	const records: PubMedResult[] = [];
+
+	for (const uid of uids) {
+		const record = result[uid];
+		if (record && !Array.isArray(record)) {
+			records.push(record);
+		}
+	}
+
+	return records;
+}
+
+export async function fetchPubMedResult(
+	pubmedId: string,
+	apiKey: string,
+	requestFn: RequestFunction
+): Promise<PubMedResult> {
+	const result = (await fetchPubMedResults([pubmedId], apiKey, requestFn))[0];
 
 	if (!result) {
 		throw new Error('Article not found');
 	}
 
-	return parsePubMedResult(result, pubmedId, '');
+	return result;
+}
+
+export async function searchPubMedIds(
+	term: string,
+	apiKey: string,
+	requestFn: RequestFunction,
+	retmax?: string
+): Promise<string[]> {
+	const baseUrl = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi';
+	const params = new URLSearchParams({
+		db: 'pubmed',
+		term: term,
+		retmode: 'json',
+	});
+
+	if (retmax) {
+		params.append('retmax', retmax);
+	}
+
+	if (apiKey) {
+		params.append('api_key', apiKey);
+	}
+
+	const response = await requestFn({ url: `${baseUrl}?${params}` });
+
+	if (response.status !== 200) {
+		throw new Error(`HTTP error! status: ${response.status}`);
+	}
+
+	const data = response.json as PubMedSearchResponse;
+	return data.esearchresult?.idlist ?? [];
+}
+
+async function trySearchPubMedIds(
+	term: string,
+	apiKey: string,
+	requestFn: RequestFunction,
+	retmax?: string
+): Promise<string | null> {
+	try {
+		return (await searchPubMedIds(term, apiKey, requestFn, retmax))[0] ?? null;
+	} catch (error) {
+		console.error('Error searching PubMed:', error);
+		return null;
+	}
 }
 
 export async function findPubMedIdFromPMC(
@@ -88,32 +117,7 @@ export async function findPubMedIdFromPMC(
 	apiKey: string,
 	requestFn: RequestFunction
 ): Promise<string | null> {
-	try {
-		const baseUrl = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi';
-		const params = new URLSearchParams({
-			db: 'pubmed',
-			term: `"${pmcId}"[pmcid]`,
-			retmode: 'json',
-		});
-
-		if (apiKey) {
-			params.append('api_key', apiKey);
-		}
-
-		const response = await requestFn({ url: `${baseUrl}?${params}` });
-
-		if (response.status !== 200) {
-			return null;
-		}
-
-		const json = response.json as PubMedSearchResponse;
-		if (json.esearchresult?.idlist && json.esearchresult.idlist.length > 0) {
-			return json.esearchresult.idlist[0];
-		}
-	} catch (error) {
-		console.error('Error searching PubMed for PMC ID:', error);
-	}
-	return null;
+	return trySearchPubMedIds(`"${pmcId}"[pmcid]`, apiKey, requestFn);
 }
 
 export async function findPubMedIdFromDOI(
@@ -121,40 +125,13 @@ export async function findPubMedIdFromDOI(
 	apiKey: string,
 	requestFn: RequestFunction
 ): Promise<string | null> {
-	try {
-		const baseUrl = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi';
-		const params = new URLSearchParams({
-			db: 'pubmed',
-			term: `"${doi}"[DOI]`,
-			retmode: 'json',
-			retmax: '1',
-		});
-
-		if (apiKey) {
-			params.append('api_key', apiKey);
-		}
-
-		const response = await requestFn({ url: `${baseUrl}?${params}` });
-
-		if (response.status !== 200) {
-			return null;
-		}
-
-		const data = response.json as PubMedSearchResponse;
-		const idList = data.esearchresult?.idlist;
-
-		return idList && idList.length > 0 ? idList[0] : null;
-	} catch (error) {
-		console.error('Error searching PubMed by DOI:', error);
-		return null;
-	}
+	return trySearchPubMedIds(`"${doi}"[DOI]`, apiKey, requestFn, '1');
 }
 
-export async function fetchDOIApiData(
+export async function fetchCrossRefMessage(
 	doi: string,
-	defaultArticleType: string,
 	requestFn: RequestFunction
-): Promise<ArticleInfo> {
+): Promise<CrossRefMessage> {
 	const baseUrl = 'https://api.crossref.org/works/' + encodeURIComponent(doi);
 
 	const response = await requestFn({ url: baseUrl });
@@ -170,16 +147,46 @@ export async function fetchDOIApiData(
 		throw new Error('Article not found');
 	}
 
-	return {
-		title: message.title?.[0] || 'No title available',
-		journal:
-			message['short-container-title']?.[0] ||
-			message['container-title']?.[0] ||
-			'No journal available',
-		year: message.created?.['date-parts']?.[0]?.[0]?.toString() || 'No year available',
-		doi: doi,
-		pubmedId: undefined,
-		pmcId: undefined,
-		articleType: message.type || defaultArticleType || 'Article',
-	};
+	return message;
+}
+
+export async function fetchArxivAtom(
+	arxivIds: string | string[],
+	requestFn: RequestFunction
+): Promise<string> {
+	const idList = Array.isArray(arxivIds) ? arxivIds.join(',') : arxivIds;
+	const params = new URLSearchParams({ id_list: idList });
+	const response = await requestFn({ url: `https://export.arxiv.org/api/query?${params}` });
+
+	if (response.status !== 200) {
+		throw new Error(`HTTP error! status: ${response.status}`);
+	}
+
+	if (!response.text) {
+		throw new Error('Article not found');
+	}
+
+	return response.text;
+}
+
+export async function fetchWosDocument(
+	wosId: string,
+	apiKey: string,
+	requestFn: RequestFunction
+): Promise<WosDocument> {
+	const url =
+		`https://api.clarivate.com/apis/wos-starter/v1/documents/${encodeURIComponent(wosId)}` +
+		'?db=WOS';
+	const response = await requestFn({ url, headers: { 'X-ApiKey': apiKey } });
+
+	if (response.status !== 200) {
+		throw new Error(`HTTP error! status: ${response.status}`);
+	}
+
+	const doc = response.json as WosDocument | null;
+	if (!doc) {
+		throw new Error('Article not found');
+	}
+
+	return doc;
 }

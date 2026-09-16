@@ -25,7 +25,7 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 // main.ts
 var main_exports = {};
 __export(main_exports, {
-  default: () => PubMedFetcherPlugin
+  default: () => ResearchArticleFetcherPlugin
 });
 module.exports = __toCommonJS(main_exports);
 var import_obsidian3 = require("obsidian");
@@ -33,13 +33,101 @@ var import_obsidian3 = require("obsidian");
 // src/types.ts
 var DEFAULT_SETTINGS = {
   apiKey: "",
+  wosApiKey: "",
   articleType: "Article",
-  enableGlobalCommand: false
+  enableGlobalCommand: false,
+  enableFailureIndex: false,
+  failureIndexFilename: "research-article-unmatched.md"
 };
 
+// src/icons.ts
+var ICON_ASSET_BASE = "https://raw.githubusercontent.com/gundestrup/obsidian-research/main/assets";
+var APP_ICONS = {
+  status: {
+    permanentFailure: { kind: "emoji", value: "\u{1F534}" },
+    transientFailure: { kind: "emoji", value: "\u{1F7E1}" }
+  },
+  ui: {
+    fetch: { kind: "obsidian", name: "download" },
+    folder: { kind: "emoji", value: "\u{1F4C1}" }
+  },
+  articleTypes: {
+    article: { kind: "emoji", value: "\u{1F4C4}" },
+    review: { kind: "emoji", value: "\u{1F50E}" },
+    preprint: { kind: "emoji", value: "\u{1F9EA}" },
+    proceedings: { kind: "emoji", value: "\u{1F4DA}" },
+    book: { kind: "emoji", value: "\u{1F4D6}" },
+    "book-chapter": { kind: "emoji", value: "\u{1F4D1}" },
+    "clinical-trial": { kind: "emoji", value: "\u{1F9EA}" },
+    "case-report": { kind: "emoji", value: "\u{1FA7A}" },
+    editorial: { kind: "emoji", value: "\u270D\uFE0F" },
+    letter: { kind: "emoji", value: "\u2709\uFE0F" },
+    news: { kind: "emoji", value: "\u{1F4F0}" },
+    dataset: { kind: "emoji", value: "\u{1F4CA}" },
+    report: { kind: "emoji", value: "\u{1F4CB}" },
+    thesis: { kind: "emoji", value: "\u{1F393}" },
+    guideline: { kind: "emoji", value: "\u{1F4D8}" },
+    comment: { kind: "emoji", value: "\u{1F4AC}" },
+    other: { kind: "emoji", value: "\u{1F4C4}" }
+  }
+};
+var ARTICLE_TYPE_KEYS = {
+  article: "article",
+  review: "review",
+  preprint: "preprint",
+  proceedings: "proceedings",
+  book: "book",
+  "book chapter": "book-chapter",
+  "clinical trial": "clinical-trial",
+  "case report": "case-report",
+  editorial: "editorial",
+  letter: "letter",
+  news: "news",
+  dataset: "dataset",
+  report: "report",
+  thesis: "thesis",
+  guideline: "guideline",
+  comment: "comment",
+  other: "other"
+};
+function renderIcon(icon) {
+  switch (icon.kind) {
+    case "emoji":
+      return icon.value;
+    case "obsidian":
+      return icon.name;
+    case "asset":
+      return `![${icon.alt}|16](${ICON_ASSET_BASE}/${icon.file})`;
+  }
+}
+function failureMarkerSymbol(kind) {
+  const icon = kind === "permanent" ? APP_ICONS.status.permanentFailure : APP_ICONS.status.transientFailure;
+  return renderIcon(icon);
+}
+function articleTypeIcon(articleType) {
+  var _a, _b;
+  const key = (_b = ARTICLE_TYPE_KEYS[(_a = articleType == null ? void 0 : articleType.trim().toLowerCase()) != null ? _a : ""]) != null ? _b : "article";
+  return renderIcon(APP_ICONS.articleTypes[key]);
+}
+
 // src/utils.ts
-function containsIgnoreCase(content, search) {
-  return content.toLowerCase().includes(search.toLowerCase());
+var PERMANENT_MARKER = failureMarkerSymbol("permanent");
+var TRANSIENT_MARKER = failureMarkerSymbol("transient");
+var MARKER_SOURCE = "(?:\u{1F534}|\u{1F7E1})\\([^)]*\\)";
+var ICON_SOURCE = "!\\[[^\\]]*\\]\\([^)]*\\)";
+var TRAILING_MARKER_PATTERN = new RegExp(`^\\s*${MARKER_SOURCE}(?:\\s*${ICON_SOURCE})?`);
+var LEADING_MARKER_PATTERN = new RegExp(`${MARKER_SOURCE}\\s*(?:${ICON_SOURCE}\\s*)?$`);
+function failureMarker(markerKey, kind) {
+  return `${kind === "permanent" ? PERMANENT_MARKER : TRANSIENT_MARKER}(${markerKey})`;
+}
+function failureMarkerKind(content, markerKey) {
+  if (content.includes(`${PERMANENT_MARKER}(${markerKey})`)) return "permanent";
+  if (content.includes(`${TRANSIENT_MARKER}(${markerKey})`)) return "transient";
+  return null;
+}
+function failureKind(error) {
+  const message = error instanceof Error ? error.message : "";
+  return message === "Article not found" || /status:\s*404/.test(message) ? "permanent" : "transient";
 }
 function replaceAnyIgnoreCase(content, searches, replacement) {
   const lowerContent = content.toLowerCase();
@@ -57,38 +145,30 @@ function replaceAnyIgnoreCase(content, searches, replacement) {
       }
     }
     if (matchIndex === -1) break;
-    result += content.slice(start, matchIndex) + replacement;
+    let gap = content.slice(start, matchIndex);
+    const leadingMarker = gap.match(LEADING_MARKER_PATTERN);
+    if (leadingMarker) gap = gap.slice(0, gap.length - leadingMarker[0].length);
+    result += gap + replacement;
     start = matchIndex + matchLength;
+    const trailingMarker = content.slice(start).match(TRAILING_MARKER_PATTERN);
+    if (trailingMarker) start += trailingMarker[0].length;
   }
   return result + content.slice(start);
 }
-function hasMarkdownLink(content, linkText, url) {
-  const normalizedUrl = url.replace(/\/$/, "");
-  return containsIgnoreCase(content, `[${linkText}](${normalizedUrl})`) || containsIgnoreCase(content, `[${linkText}](${normalizedUrl}/)`);
-}
-function hasMarkedMarkdownLink(content, marker, url) {
+function hasMarkdownLinkTo(content, url) {
   const lowerContent = content.toLowerCase();
-  const lowerMarker = marker.toLowerCase();
   const normalizedUrl = url.toLowerCase().replace(/\/$/, "");
-  const linkEnds = [`](${normalizedUrl})`, `](${normalizedUrl}/)`];
-  if (!marker) return linkEnds.some((linkEnd) => lowerContent.includes(linkEnd));
-  let markerIndex = lowerContent.indexOf(lowerMarker);
-  while (markerIndex !== -1) {
-    const lineEnd = lowerContent.indexOf(String.fromCharCode(10), markerIndex);
-    const linkIndex = linkEnds.reduce((firstIndex, linkEnd) => {
-      const index = lowerContent.indexOf(linkEnd, markerIndex);
-      return firstIndex === -1 || index !== -1 && index < firstIndex ? index : firstIndex;
-    }, -1);
-    if (linkIndex !== -1 && (lineEnd === -1 || linkIndex < lineEnd)) return true;
-    markerIndex = lowerContent.indexOf(lowerMarker, markerIndex + lowerMarker.length);
-  }
-  return false;
+  return lowerContent.includes(`](${normalizedUrl})`) || lowerContent.includes(`](${normalizedUrl}/)`);
 }
+var CITATION_MARKERS = ["\u{1F4DA}", "\u{1F517}", "\u{1F4C4}", "\u{1F50D}", "[!["];
 function hasCitationWithTitleAndYear(content, title, year) {
   const lowerTitle = title.toLowerCase();
   const yearMarker = `- ${year.toLowerCase()}`;
   return content.toLowerCase().split(String.fromCharCode(10)).some((line) => {
-    const markerIndex = line.indexOf("\u{1F4DA}");
+    const markerIndex = CITATION_MARKERS.reduce((first, marker) => {
+      const index = line.indexOf(marker);
+      return index !== -1 && (first === -1 || index < first) ? index : first;
+    }, -1);
     if (markerIndex === -1) return false;
     const titleIndex = line.indexOf(lowerTitle, markerIndex);
     return titleIndex !== -1 && line.indexOf(yearMarker, titleIndex) !== -1;
@@ -135,75 +215,163 @@ function extractDOI(input) {
   if (isValidDOI(input)) return input;
   return null;
 }
-function isAlreadyCited(content, pubmedId, doi, pmcId, title, year) {
-  if (pubmedId) {
-    const pubmedUrl = `https://pubmed.ncbi.nlm.nih.gov/${pubmedId}/`;
-    if (hasMarkdownLink(content, pubmedId, pubmedUrl)) return true;
-    if (hasMarkedMarkdownLink(content, "\u{1F4DA}", pubmedUrl)) return true;
+function extractArxivId(input) {
+  const urlMatch = input.match(/arxiv\.org\/(?:abs|pdf)\/([a-z-]+(?:\.[a-z]{2})?\/\d{7}|\d{4}\.\d{4,6})(v\d+)?/i);
+  if (urlMatch) return urlMatch[1];
+  const tagMatch = input.match(/arXiv:(\d{4}\.\d{4,6})(v\d+)?/i);
+  if (tagMatch) return tagMatch[1];
+  const bareMatch = input.match(/^(\d{4}\.\d{4,6})(v\d+)?$/);
+  if (bareMatch) return bareMatch[1];
+  const oldStyleMatch = input.match(/^([a-z-]+(?:\.[a-z]{2})?\/\d{7})(v\d+)?$/i);
+  if (oldStyleMatch) return oldStyleMatch[1];
+  return null;
+}
+function extractWosId(input) {
+  const urlMatch = input.match(/webofscience\.com\/wos\/\w+\/full-record\/(WOS:[A-Z0-9]+)/i);
+  if (urlMatch) return urlMatch[1].toUpperCase();
+  const tagMatch = input.match(/\b(WOS:[A-Z0-9]{15})\b/i);
+  if (tagMatch) return tagMatch[1].toUpperCase();
+  return null;
+}
+function pubmedUrl(pubmedId) {
+  return `https://pubmed.ncbi.nlm.nih.gov/${pubmedId}/`;
+}
+function pmcUrl(pmcId) {
+  return `https://pmc.ncbi.nlm.nih.gov/articles/${pmcId}/`;
+}
+function doiUrl(doi) {
+  return `https://doi.org/${cleanDOI(doi)}`;
+}
+function arxivAbsUrl(arxivId) {
+  return `https://arxiv.org/abs/${arxivId}`;
+}
+function wosRecordUrl(wosId) {
+  return `https://www.webofscience.com/wos/woscc/full-record/${wosId}`;
+}
+function isAlreadyCited(content, info) {
+  if (info.pubmedId) {
+    if (hasMarkdownLinkTo(content, pubmedUrl(info.pubmedId))) return true;
   }
-  if (doi) {
-    const doiUrl = `https://doi.org/${cleanDOI(doi)}`;
-    if (hasMarkedMarkdownLink(content, "", doiUrl)) return true;
+  if (info.doi) {
+    if (hasMarkdownLinkTo(content, doiUrl(info.doi))) return true;
   }
-  if (pmcId) {
-    const pmcUrl = `https://pmc.ncbi.nlm.nih.gov/articles/${pmcId}/`;
-    if (hasMarkdownLink(content, "\u{1F4C4}", pmcUrl)) return true;
+  if (info.pmcId) {
+    if (hasMarkdownLinkTo(content, pmcUrl(info.pmcId))) return true;
   }
-  if (title && year && hasCitationWithTitleAndYear(content, title, year)) return true;
+  if (info.arxivId) {
+    if (hasMarkdownLinkTo(content, arxivAbsUrl(info.arxivId))) return true;
+  }
+  if (info.wosId) {
+    if (hasMarkdownLinkTo(content, wosRecordUrl(info.wosId))) return true;
+  }
+  if (info.title && info.year && hasCitationWithTitleAndYear(content, info.title, info.year)) return true;
   return false;
 }
-function formatCitation(info) {
-  const type = info.articleType || "Article";
-  if (info.pubmedId && info.pmcId) {
-    const pubmedLink = `https://pubmed.ncbi.nlm.nih.gov/${info.pubmedId}/`;
-    const pmcLink = `https://pmc.ncbi.nlm.nih.gov/articles/${info.pmcId}/`;
-    return `\u{1F4DA} ${type}: [${info.title}](${pubmedLink}) - ${info.year}, ${info.journal} [\u{1F4C4}](${pmcLink})`;
-  } else if (info.pubmedId && info.doi) {
-    const pubmedLink = `https://pubmed.ncbi.nlm.nih.gov/${info.pubmedId}/`;
-    const doiLink = `https://doi.org/${cleanDOI(info.doi)}`;
-    return `\u{1F4DA} ${type}: [${info.title}](${pubmedLink}) - ${info.year}, ${info.journal} [\u{1F517}](${doiLink})`;
-  } else if (info.pubmedId) {
-    const pubmedLink = `https://pubmed.ncbi.nlm.nih.gov/${info.pubmedId}/`;
-    return `\u{1F4DA} ${type}: [${info.title}](${pubmedLink}) - ${info.year}, ${info.journal}`;
-  } else if (info.doi) {
-    const doiLink = `https://doi.org/${cleanDOI(info.doi)}`;
-    return `\u{1F517} ${type}: [${info.title}](${doiLink}) - ${info.year}, ${info.journal}`;
-  }
-  return "";
+var ARTICLE_TYPE_MAP = {
+  // Canonical labels
+  "article": "Article",
+  "journal article": "Article",
+  "journal-article": "Article",
+  "early access": "Article",
+  "multicenter study": "Article",
+  "observational study": "Article",
+  "comparative study": "Article",
+  "evaluation study": "Article",
+  "validation study": "Article",
+  "twin study": "Article",
+  "review": "Review",
+  "systematic review": "Review",
+  "scoping review": "Review",
+  "meta-analysis": "Review",
+  "preprint": "Preprint",
+  "posted-content": "Preprint",
+  "clinical trial": "Clinical Trial",
+  "randomized controlled trial": "Clinical Trial",
+  "controlled clinical trial": "Clinical Trial",
+  "pragmatic clinical trial": "Clinical Trial",
+  "adaptive clinical trial": "Clinical Trial",
+  "equivalence trial": "Clinical Trial",
+  "case reports": "Case Report",
+  "proceedings": "Proceedings",
+  "proceedings-article": "Proceedings",
+  "proceedings-series": "Proceedings",
+  "proceeding paper": "Proceedings",
+  "book": "Book",
+  "monograph": "Book",
+  "reference-book": "Book",
+  "edited-book": "Book",
+  "book-set": "Book",
+  "book-series": "Book",
+  "book chapter": "Book Chapter",
+  "book-chapter": "Book Chapter",
+  "book-part": "Book Chapter",
+  "book-section": "Book Chapter",
+  "book-track": "Book Chapter",
+  "editorial": "Editorial",
+  "editorial material": "Editorial",
+  "letter": "Letter",
+  "comment": "Comment",
+  "news": "News",
+  "news item": "News",
+  "newspaper article": "News",
+  "dataset": "Dataset",
+  "component": "Dataset",
+  "data paper": "Dataset",
+  "report": "Report",
+  "report-series": "Report",
+  "technical report": "Report",
+  "dissertation": "Thesis",
+  "guideline": "Guideline",
+  "practice guideline": "Guideline",
+  "book review": "Other",
+  "correction": "Other",
+  "retracted publication": "Other",
+  "biographical-item": "Other",
+  "meeting abstract": "Other",
+  "reference-entry": "Other",
+  "standard": "Other",
+  "standard-series": "Other",
+  "peer-review": "Other",
+  "grant": "Other",
+  "other": "Other",
+  "journal": "Other",
+  "journal-issue": "Other",
+  "journal-volume": "Other"
+};
+function normalizeArticleType(rawType) {
+  var _a;
+  const trimmed = rawType == null ? void 0 : rawType.trim();
+  if (!trimmed) return void 0;
+  return (_a = ARTICLE_TYPE_MAP[trimmed.toLowerCase()]) != null ? _a : trimmed;
 }
-function extractURLs(content) {
-  const pubmedMatches = content.match(/https?:\/\/pubmed\.ncbi\.nlm\.nih\.gov\/\d+\/?/gi) || [];
-  const pmcMatches = content.match(/https?:\/\/pmc\.ncbi\.nlm\.nih\.gov\/(?:articles\/)?PMC\d+\/?/gi) || [];
-  const doiMatches = content.match(
-    /https?:\/\/(?:dx\.)?doi\.org\/10\.\d{4,9}\/[-._;()/:A-Z0-9]+(?=[\s\])]|$)/gi
-  ) || [];
-  return {
-    pubmedUrls: pubmedMatches,
-    pmcUrls: pmcMatches,
-    doiUrls: doiMatches
-  };
+function resolveArticleType(rawType, fallback) {
+  return normalizeArticleType(rawType) || fallback || "Article";
 }
-function extractUniqueIds(content) {
-  const { pubmedUrls, pmcUrls, doiUrls } = extractURLs(content);
-  const pubmedIds = [
-    ...new Set(pubmedUrls.map((match) => extractPubMedId(match)).filter((id) => id !== null))
-  ];
-  const pmcIds = [
-    ...new Set(pmcUrls.map((match) => extractPMCId(match)).filter((id) => id !== null))
-  ];
-  const dois = [
-    ...new Set(doiUrls.map((match) => extractDOI(match)).filter((id) => id !== null))
-  ];
-  return { pubmedIds, pmcIds, dois };
+function providerIcon(alt, file) {
+  return renderIcon({ kind: "asset", alt, file });
 }
+function providerBadge(alt, file, href) {
+  return `[${providerIcon(alt, file)}](${href})`;
+}
+var PUBMED_URL_PATTERN = /https?:\/\/pubmed\.ncbi\.nlm\.nih\.gov\/\d+\/?/gi;
+var PMC_URL_PATTERN = /https?:\/\/pmc\.ncbi\.nlm\.nih\.gov\/(?:articles\/)?PMC\d+\/?/gi;
+var DOI_URL_PATTERN = /https?:\/\/(?:dx\.)?doi\.org\/10\.\d{4,9}\/[-._;()/:A-Z0-9]+(?=[\s\])]|$)/gi;
+var ARXIV_REF_PATTERN = /https?:\/\/arxiv\.org\/(?:abs|pdf)\/[^\s)\]]+|arXiv:\d{4}\.\d{4,6}(?:v\d+)?/gi;
+var WOS_REF_PATTERN = /https?:\/\/(?:www\.)?webofscience\.com\/wos\/\w+\/full-record\/WOS:[A-Z0-9]+|\bWOS:[A-Z0-9]{15}\b/gi;
 function isPubMedIdCited(content, pubmedId) {
-  return hasMarkedMarkdownLink(content, "", `https://pubmed.ncbi.nlm.nih.gov/${pubmedId}/`);
+  return hasMarkdownLinkTo(content, pubmedUrl(pubmedId));
 }
 function isPMCIdCited(content, pmcId) {
-  return hasMarkdownLink(content, "\u{1F4C4}", `https://pmc.ncbi.nlm.nih.gov/articles/${pmcId}/`);
+  return hasMarkdownLinkTo(content, pmcUrl(pmcId));
 }
 function isDOICited(content, doi) {
-  return hasMarkedMarkdownLink(content, "", `https://doi.org/${doi}`);
+  return hasMarkdownLinkTo(content, doiUrl(doi));
+}
+function isArxivIdCited(content, arxivId) {
+  return hasMarkdownLinkTo(content, arxivAbsUrl(arxivId));
+}
+function isWosIdCited(content, wosId) {
+  return hasMarkdownLinkTo(content, wosRecordUrl(wosId));
 }
 function replacePubMedUrl(content, pubmedId, citation) {
   const baseUrl = `pubmed.ncbi.nlm.nih.gov/${pubmedId}`;
@@ -231,8 +399,141 @@ function replaceDOIUrl(content, doi, citation) {
   const doiPath = `/${doi}`;
   return replaceAnyIgnoreCase(content, [`https://dx.doi.org${doiPath}`, `https://doi.org${doiPath}`], citation);
 }
+function replaceArxivUrl(content, arxivId, citation) {
+  const baseUrl = `arxiv.org`;
+  const urls = [];
+  for (const path of [`/abs/${arxivId}`, `/pdf/${arxivId}`]) {
+    urls.push(`https://${baseUrl}${path}/`, `https://${baseUrl}${path}`, `http://${baseUrl}${path}/`, `http://${baseUrl}${path}`);
+  }
+  urls.push(`arXiv:${arxivId}`);
+  return replaceAnyIgnoreCase(content, urls, citation);
+}
+function replaceWosUrl(content, wosId, citation) {
+  const urlRegex = new RegExp(
+    `(${MARKER_SOURCE}\\s*(?:${ICON_SOURCE}\\s*)?)?https?:\\/\\/(?:www\\.)?webofscience\\.com\\/wos\\/\\w+\\/full-record\\/${wosId}\\/?(\\s*${MARKER_SOURCE})?`,
+    "gi"
+  );
+  return replaceAnyIgnoreCase(content.replace(urlRegex, citation), [wosId], citation);
+}
 
 // src/api.ts
+async function fetchPubMedResults(pubmedIds, apiKey, requestFn) {
+  var _a, _b;
+  if (pubmedIds.length === 0) return [];
+  const baseUrl = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi";
+  const params = new URLSearchParams({
+    db: "pubmed",
+    id: pubmedIds.join(","),
+    retmode: "json",
+    version: "2.0"
+  });
+  if (apiKey) {
+    params.append("api_key", apiKey);
+  }
+  const response = await requestFn({ url: `${baseUrl}?${params}` });
+  if (response.status !== 200) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+  const data = response.json;
+  const result = (_a = data.result) != null ? _a : {};
+  const uids = (_b = result.uids) != null ? _b : Object.keys(result).filter((key) => key !== "uids");
+  const records = [];
+  for (const uid of uids) {
+    const record = result[uid];
+    if (record && !Array.isArray(record)) {
+      records.push(record);
+    }
+  }
+  return records;
+}
+async function fetchPubMedResult(pubmedId, apiKey, requestFn) {
+  const result = (await fetchPubMedResults([pubmedId], apiKey, requestFn))[0];
+  if (!result) {
+    throw new Error("Article not found");
+  }
+  return result;
+}
+async function searchPubMedIds(term, apiKey, requestFn, retmax) {
+  var _a, _b;
+  const baseUrl = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi";
+  const params = new URLSearchParams({
+    db: "pubmed",
+    term,
+    retmode: "json"
+  });
+  if (retmax) {
+    params.append("retmax", retmax);
+  }
+  if (apiKey) {
+    params.append("api_key", apiKey);
+  }
+  const response = await requestFn({ url: `${baseUrl}?${params}` });
+  if (response.status !== 200) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+  const data = response.json;
+  return (_b = (_a = data.esearchresult) == null ? void 0 : _a.idlist) != null ? _b : [];
+}
+async function trySearchPubMedIds(term, apiKey, requestFn, retmax) {
+  var _a;
+  try {
+    return (_a = (await searchPubMedIds(term, apiKey, requestFn, retmax))[0]) != null ? _a : null;
+  } catch (error) {
+    console.error("Error searching PubMed:", error);
+    return null;
+  }
+}
+async function findPubMedIdFromPMC(pmcId, apiKey, requestFn) {
+  return trySearchPubMedIds(`"${pmcId}"[pmcid]`, apiKey, requestFn);
+}
+async function findPubMedIdFromDOI(doi, apiKey, requestFn) {
+  return trySearchPubMedIds(`"${doi}"[DOI]`, apiKey, requestFn, "1");
+}
+async function fetchCrossRefMessage(doi, requestFn) {
+  const baseUrl = "https://api.crossref.org/works/" + encodeURIComponent(doi);
+  const response = await requestFn({ url: baseUrl });
+  if (response.status !== 200) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+  const data = response.json;
+  const message = data.message;
+  if (!message) {
+    throw new Error("Article not found");
+  }
+  return message;
+}
+async function fetchArxivAtom(arxivIds, requestFn) {
+  const idList = Array.isArray(arxivIds) ? arxivIds.join(",") : arxivIds;
+  const params = new URLSearchParams({ id_list: idList });
+  const response = await requestFn({ url: `https://export.arxiv.org/api/query?${params}` });
+  if (response.status !== 200) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+  if (!response.text) {
+    throw new Error("Article not found");
+  }
+  return response.text;
+}
+async function fetchWosDocument(wosId, apiKey, requestFn) {
+  const url = `https://api.clarivate.com/apis/wos-starter/v1/documents/${encodeURIComponent(wosId)}?db=WOS`;
+  const response = await requestFn({ url, headers: { "X-ApiKey": apiKey } });
+  if (response.status !== 200) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+  const doc = response.json;
+  if (!doc) {
+    throw new Error("Article not found");
+  }
+  return doc;
+}
+
+// src/providers/types.ts
+function isArticleInfo(outcome) {
+  return !!outcome && "title" in outcome;
+}
+var NCBI_DELAY = 350;
+
+// src/providers/pubmed.ts
 function parsePubMedResult(result, pubmedId, defaultArticleType) {
   var _a;
   let doi = "";
@@ -262,94 +563,110 @@ function parsePubMedResult(result, pubmedId, defaultArticleType) {
     pubmedId,
     doi,
     pmcId,
-    articleType: ((_a = result.pubtype) == null ? void 0 : _a[0]) || defaultArticleType || "Article"
+    articleType: resolveArticleType((_a = result.pubtype) == null ? void 0 : _a[0], defaultArticleType)
   };
 }
-async function fetchPubMedApiData(pubmedId, apiKey, requestFn) {
-  var _a;
-  const baseUrl = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi";
-  const params = new URLSearchParams({
-    db: "pubmed",
-    id: pubmedId,
-    retmode: "json",
-    version: "2.0"
-  });
-  if (apiKey) {
-    params.append("api_key", apiKey);
-  }
-  const response = await requestFn({ url: `${baseUrl}?${params}` });
-  if (response.status !== 200) {
-    throw new Error(`HTTP error! status: ${response.status}`);
-  }
-  const data = response.json;
-  const result = (_a = data.result) == null ? void 0 : _a[pubmedId];
-  if (!result) {
-    throw new Error("Article not found");
-  }
-  return parsePubMedResult(result, pubmedId, "");
+async function fetchViaPubMed(id, findPubMedId, ctx) {
+  const apiKey = ctx.settings.apiKey || "";
+  const pubmedId = await findPubMedId(id, apiKey, ctx.requestFn);
+  if (!pubmedId) return null;
+  await ctx.delay(NCBI_DELAY);
+  return parsePubMedResult(await fetchPubMedResult(pubmedId, apiKey, ctx.requestFn), pubmedId, "");
 }
-async function findPubMedIdFromPMC(pmcId, apiKey, requestFn) {
+function recordHasArticleId(record, idtype, value) {
   var _a;
-  try {
-    const baseUrl = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi";
-    const params = new URLSearchParams({
-      db: "pubmed",
-      term: `"${pmcId}"[pmcid]`,
-      retmode: "json"
-    });
-    if (apiKey) {
-      params.append("api_key", apiKey);
-    }
-    const response = await requestFn({ url: `${baseUrl}?${params}` });
-    if (response.status !== 200) {
-      return null;
-    }
-    const json = response.json;
-    if (((_a = json.esearchresult) == null ? void 0 : _a.idlist) && json.esearchresult.idlist.length > 0) {
-      return json.esearchresult.idlist[0];
-    }
-  } catch (error) {
-    console.error("Error searching PubMed for PMC ID:", error);
-  }
-  return null;
+  return !!((_a = record.articleids) == null ? void 0 : _a.some((articleId) => {
+    if (articleId.idtype !== idtype) return false;
+    return idtype === "pmc" ? articleId.value.replace(/\D/g, "") === value.replace(/\D/g, "") : articleId.value.toUpperCase() === value.toUpperCase();
+  }));
 }
-async function findPubMedIdFromDOI(doi, apiKey, requestFn) {
-  var _a;
-  try {
-    const baseUrl = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi";
-    const params = new URLSearchParams({
-      db: "pubmed",
-      term: `"${doi}"[DOI]`,
-      retmode: "json",
-      retmax: "1"
-    });
-    if (apiKey) {
-      params.append("api_key", apiKey);
+async function fetchViaPubMedMany(ids, options, ctx) {
+  var _a, _b;
+  const results = /* @__PURE__ */ new Map();
+  if (ids.length === 0) return results;
+  const apiKey = ctx.settings.apiKey || "";
+  let pubmedIds = ids;
+  if (options.searchTerm) {
+    const term = ids.map(options.searchTerm).join(" OR ");
+    pubmedIds = await searchPubMedIds(term, apiKey, ctx.requestFn, String(Math.max(100, ids.length)));
+    if (pubmedIds.length === 0) {
+      for (const id of ids) {
+        if (options.missFailure) results.set(id, { failure: options.missFailure });
+      }
+      return results;
     }
-    const response = await requestFn({ url: `${baseUrl}?${params}` });
-    if (response.status !== 200) {
-      return null;
-    }
-    const data = response.json;
-    const idList = (_a = data.esearchresult) == null ? void 0 : _a.idlist;
-    return idList && idList.length > 0 ? idList[0] : null;
-  } catch (error) {
-    console.error("Error searching PubMed by DOI:", error);
-    return null;
+    await ctx.delay(NCBI_DELAY);
   }
+  const records = await fetchPubMedResults(pubmedIds, apiKey, ctx.requestFn);
+  for (const id of ids) {
+    const record = records.find((candidate) => options.matchRecord(id, candidate));
+    if (record) {
+      const info = parsePubMedResult(record, (_a = record.uid) != null ? _a : id, "");
+      (_b = options.applyId) == null ? void 0 : _b.call(options, info, id);
+      results.set(id, info);
+    } else if (options.missFailure) {
+      results.set(id, { failure: options.missFailure });
+    }
+  }
+  return results;
 }
-async function fetchDOIApiData(doi, defaultArticleType, requestFn) {
+var pubmedProvider = {
+  id: "pubmed",
+  displayName: "PubMed",
+  rateLimitDelay: NCBI_DELAY,
+  scanPattern: PUBMED_URL_PATTERN,
+  badge: { alt: "PubMed", logo: "pubmed.svg" },
+  supportedArticleTypes: ["article", "review", "preprint", "proceedings", "book", "book-chapter", "clinical-trial", "case-report", "editorial", "letter", "news", "dataset", "report", "thesis", "guideline", "comment", "other"],
+  citationUrl: (info) => info.pubmedId ? pubmedUrl(info.pubmedId) : null,
+  referenceForId: pubmedUrl,
+  markerKey: (id) => `pubmed=${id}`,
+  extractId: extractPubMedId,
+  isIdCited: isPubMedIdCited,
+  replaceUrl: replacePubMedUrl,
+  fetch: async (id, ctx) => parsePubMedResult(await fetchPubMedResult(id, ctx.settings.apiKey || "", ctx.requestFn), id, ""),
+  fetchMany: (ids, ctx) => fetchViaPubMedMany(
+    ids,
+    { matchRecord: (id, record) => record.uid === id, missFailure: "permanent" },
+    ctx
+  )
+};
+
+// src/providers/pmc.ts
+var pmcProvider = {
+  id: "pmc",
+  displayName: "PubMed Central",
+  rateLimitDelay: NCBI_DELAY,
+  scanPattern: PMC_URL_PATTERN,
+  badge: { alt: "PMC", logo: "pmc.svg" },
+  supportedArticleTypes: ["article", "review", "preprint", "proceedings", "book", "book-chapter", "clinical-trial", "case-report", "editorial", "letter", "news", "dataset", "report", "thesis", "guideline", "comment", "other"],
+  citationUrl: (info) => info.pmcId ? pmcUrl(info.pmcId) : null,
+  referenceForId: pmcUrl,
+  markerKey: (id) => `pmc=${id}`,
+  extractId: extractPMCId,
+  isIdCited: isPMCIdCited,
+  replaceUrl: replacePMCUrl,
+  fetch: async (id, ctx) => {
+    const info = await fetchViaPubMed(id, findPubMedIdFromPMC, ctx);
+    if (info) info.pmcId = id;
+    return info;
+  },
+  fetchMany: (ids, ctx) => fetchViaPubMedMany(
+    ids,
+    {
+      searchTerm: (id) => `"${id}"[pmcid]`,
+      matchRecord: (id, record) => recordHasArticleId(record, "pmc", id),
+      applyId: (info, id) => {
+        info.pmcId = id;
+      },
+      missFailure: "permanent"
+    },
+    ctx
+  )
+};
+
+// src/providers/doi.ts
+function parseCrossRefMessage(message, doi, defaultArticleType) {
   var _a, _b, _c, _d, _e, _f, _g;
-  const baseUrl = "https://api.crossref.org/works/" + encodeURIComponent(doi);
-  const response = await requestFn({ url: baseUrl });
-  if (response.status !== 200) {
-    throw new Error(`HTTP error! status: ${response.status}`);
-  }
-  const data = response.json;
-  const message = data.message;
-  if (!message) {
-    throw new Error("Article not found");
-  }
   return {
     title: ((_a = message.title) == null ? void 0 : _a[0]) || "No title available",
     journal: ((_b = message["short-container-title"]) == null ? void 0 : _b[0]) || ((_c = message["container-title"]) == null ? void 0 : _c[0]) || "No journal available",
@@ -357,8 +674,219 @@ async function fetchDOIApiData(doi, defaultArticleType, requestFn) {
     doi,
     pubmedId: void 0,
     pmcId: void 0,
-    articleType: message.type || defaultArticleType || "Article"
+    articleType: resolveArticleType(message.type, defaultArticleType)
   };
+}
+var doiProvider = {
+  id: "doi",
+  displayName: "DOI",
+  rateLimitDelay: NCBI_DELAY,
+  scanPattern: DOI_URL_PATTERN,
+  badge: { alt: "DOI", logo: "doi.svg" },
+  supportedArticleTypes: ["article", "review", "preprint", "proceedings", "book", "book-chapter", "clinical-trial", "case-report", "editorial", "letter", "news", "dataset", "report", "thesis", "guideline", "comment", "other"],
+  citationUrl: (info) => info.doi ? doiUrl(info.doi) : null,
+  referenceForId: doiUrl,
+  markerKey: (id) => `doi=${id}`,
+  extractId: extractDOI,
+  isIdCited: isDOICited,
+  replaceUrl: replaceDOIUrl,
+  fetch: async (id, ctx) => {
+    const info = await fetchViaPubMed(id, findPubMedIdFromDOI, ctx);
+    if (info) {
+      info.doi = id;
+      return info;
+    }
+    const message = await fetchCrossRefMessage(id, ctx.requestFn);
+    return parseCrossRefMessage(message, id, ctx.settings.articleType || "Article");
+  },
+  fetchMany: async (ids, ctx) => {
+    const results = await fetchViaPubMedMany(
+      ids,
+      {
+        searchTerm: (id) => `"${id}"[DOI]`,
+        matchRecord: (id, record) => recordHasArticleId(record, "doi", id),
+        applyId: (info, id) => {
+          info.doi = id;
+        }
+      },
+      ctx
+    );
+    for (const id of ids) {
+      if (results.has(id)) continue;
+      const outcome = await fetchCrossRefMessage(id, ctx.requestFn).then(
+        (message) => parseCrossRefMessage(message, id, ctx.settings.articleType || "Article")
+      ).catch((error) => ({ failure: failureKind(error) }));
+      results.set(id, outcome);
+    }
+    return results;
+  }
+};
+
+// src/providers/arxiv.ts
+var XML_ENTITIES = {
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  "#39": "'"
+};
+function decodeXmlEntities(text) {
+  return text.replace(/&(#?\w+);/g, (match, entity) => {
+    var _a;
+    return (_a = XML_ENTITIES[entity]) != null ? _a : match;
+  });
+}
+function extractXmlTag(xml, tag) {
+  const match = xml.match(new RegExp(`<${tag}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${tag}>`));
+  if (!match) return void 0;
+  const value = decodeXmlEntities(match[1].trim().replace(/\s+/g, " "));
+  return value || void 0;
+}
+function entryBaseId(entryXml) {
+  var _a;
+  const entryId = extractXmlTag(entryXml, "id");
+  return (_a = entryId == null ? void 0 : entryId.split("/abs/")[1]) == null ? void 0 : _a.replace(/v\d+$/, "").toLowerCase();
+}
+function parseEntryXml(entryXml, arxivId) {
+  const title = extractXmlTag(entryXml, "title");
+  const published = extractXmlTag(entryXml, "published");
+  const journalRef = extractXmlTag(entryXml, "arxiv:journal_ref");
+  const doi = extractXmlTag(entryXml, "arxiv:doi");
+  return {
+    title: title || "No title available",
+    journal: journalRef || "arXiv preprint",
+    year: (published == null ? void 0 : published.slice(0, 4)) || "No year available",
+    arxivId,
+    doi: doi ? cleanDOI(doi) : void 0,
+    articleType: "Preprint"
+  };
+}
+function parseArxivFeed(xml, arxivIds) {
+  var _a, _b;
+  const wanted = new Map(arxivIds.map((id) => [id.toLowerCase(), id]));
+  const results = /* @__PURE__ */ new Map();
+  for (const entryXml of (_a = xml.match(/<entry(?:\s[^>]*)?>[\s\S]*?<\/entry>/g)) != null ? _a : []) {
+    const requestedId = wanted.get((_b = entryBaseId(entryXml)) != null ? _b : "");
+    if (requestedId) results.set(requestedId, parseEntryXml(entryXml, requestedId));
+  }
+  return results;
+}
+function parseArxivEntry(xml, arxivId) {
+  const info = parseArxivFeed(xml, [arxivId]).get(arxivId);
+  if (!info) {
+    throw new Error("Article not found");
+  }
+  return info;
+}
+var arxivProvider = {
+  id: "arxiv",
+  displayName: "arXiv",
+  rateLimitDelay: 3e3,
+  scanPattern: ARXIV_REF_PATTERN,
+  badge: { alt: "arXiv", logo: "arxiv.svg" },
+  supportedArticleTypes: ["preprint"],
+  citationUrl: (info) => info.arxivId ? arxivAbsUrl(info.arxivId) : null,
+  referenceForId: arxivAbsUrl,
+  markerKey: (id) => `arxiv=${id}`,
+  extractId: extractArxivId,
+  isIdCited: isArxivIdCited,
+  replaceUrl: replaceArxivUrl,
+  fetch: async (id, ctx) => parseArxivEntry(await fetchArxivAtom(id, ctx.requestFn), id),
+  fetchMany: async (ids, ctx) => {
+    const parsed = parseArxivFeed(await fetchArxivAtom(ids, ctx.requestFn), ids);
+    const results = new Map(parsed);
+    for (const id of ids) {
+      if (!results.has(id)) results.set(id, { failure: "permanent" });
+    }
+    return results;
+  }
+};
+
+// src/providers/wos.ts
+function parseWosDocument(doc, wosId, defaultArticleType) {
+  var _a, _b, _c, _d, _e, _f;
+  if (!doc || !doc.title) {
+    throw new Error("Article not found");
+  }
+  return {
+    title: doc.title,
+    journal: ((_a = doc.source) == null ? void 0 : _a.sourceTitle) || "No journal available",
+    year: ((_c = (_b = doc.source) == null ? void 0 : _b.publishYear) == null ? void 0 : _c.toString()) || "No year available",
+    wosId,
+    doi: ((_d = doc.identifiers) == null ? void 0 : _d.doi) ? cleanDOI(doc.identifiers.doi) : void 0,
+    pubmedId: (_e = doc.identifiers) == null ? void 0 : _e.pmid,
+    articleType: resolveArticleType((_f = doc.types) == null ? void 0 : _f[0], defaultArticleType)
+  };
+}
+var wosProvider = {
+  id: "wos",
+  displayName: "Web of Science",
+  rateLimitDelay: NCBI_DELAY,
+  scanPattern: WOS_REF_PATTERN,
+  badge: { alt: "Web of Science", logo: "clarivate.svg" },
+  supportedArticleTypes: ["article", "review", "preprint", "proceedings", "book", "book-chapter", "clinical-trial", "case-report", "editorial", "letter", "news", "dataset", "report", "thesis", "guideline", "comment", "other"],
+  citationUrl: (info) => info.wosId ? wosRecordUrl(info.wosId) : null,
+  referenceForId: wosRecordUrl,
+  markerKey: (id) => `wos=${id.replace(/^WOS:/i, "")}`,
+  extractId: extractWosId,
+  isIdCited: isWosIdCited,
+  replaceUrl: replaceWosUrl,
+  fetch: async (id, ctx) => {
+    const apiKey = ctx.settings.wosApiKey || "";
+    if (!apiKey) {
+      throw new Error("Web of Science API key required. Add it in the plugin settings.");
+    }
+    const doc = await fetchWosDocument(id, apiKey, ctx.requestFn);
+    return parseWosDocument(doc, id, ctx.settings.articleType || "Article");
+  }
+};
+
+// src/providers/index.ts
+var PROVIDERS = [
+  pubmedProvider,
+  pmcProvider,
+  doiProvider,
+  arxivProvider,
+  wosProvider
+];
+var CITATION_ORDER = [
+  pubmedProvider,
+  arxivProvider,
+  wosProvider,
+  pmcProvider,
+  doiProvider
+];
+function collectProviderIds(content) {
+  var _a;
+  const found = /* @__PURE__ */ new Map();
+  for (const provider of PROVIDERS) {
+    const matches = (_a = content.match(provider.scanPattern)) != null ? _a : [];
+    const ids = [
+      ...new Set(
+        matches.map((match) => provider.extractId(match)).filter((id) => id !== null)
+      )
+    ];
+    if (ids.length > 0) found.set(provider, ids);
+  }
+  return found;
+}
+
+// src/citation.ts
+function formatCitation(info, source) {
+  const type = info.articleType || "Article";
+  const links = [];
+  const ordered = source ? [source, ...CITATION_ORDER.filter((p) => p !== source)] : CITATION_ORDER;
+  for (const provider of ordered) {
+    const url = provider.citationUrl(info);
+    if (url && !links.some((link) => link.url === url)) {
+      links.push({ badge: providerBadge(provider.badge.alt, provider.badge.logo, url), url });
+    }
+  }
+  const [primary, ...secondary] = links;
+  if (!primary) return "";
+  const extras = secondary.map((link) => link.badge).join(" ");
+  return `${primary.badge} ${articleTypeIcon(type)} ${type}: [${info.title}](${primary.url}) - ${info.year}, ${info.journal}${extras ? " " + extras : ""}`;
 }
 
 // src/modals.ts
@@ -373,24 +901,24 @@ var FolderSelectionModal = class extends import_obsidian.Modal {
     new import_obsidian.Setting(contentEl).setName("Select folder for global update").setHeading();
     new import_obsidian.Setting(contentEl).setDesc("\u26A0\uFE0F This will update ALL PubMed/DOI links in the selected folder and its subfolders.");
     const allFiles = this.app.vault.getAllLoadedFiles();
-    const folders = allFiles.filter((f) => "children" in f).map((f) => f.path).sort();
+    const folders = allFiles.filter((f) => "children" in f).map((f) => f.path).sort((a, b) => a.localeCompare(b));
     const allNotesBtn = contentEl.createEl("button", {
-      text: "\u{1F4C1} All notes in vault",
-      cls: "pubmed-fetcher-button-full"
+      text: `${APP_ICONS.ui.folder.value} All notes in vault`,
+      cls: "research-article-fetcher-button-full"
     });
     allNotesBtn.onclick = () => {
       this.onSubmit("/");
       this.close();
     };
     contentEl.createEl("p", { text: "Or select a specific folder" });
-    const folderList = contentEl.createDiv({ cls: "pubmed-fetcher-folder-list" });
+    const folderList = contentEl.createDiv({ cls: "research-article-fetcher-folder-list" });
     if (folders.length === 0) {
       folderList.createEl("p", { text: "No folders found in the vault" });
     } else {
       folders.forEach((folder) => {
         const folderBtn = folderList.createEl("button", {
-          text: `\u{1F4C1} ${folder || "(root)"}`,
-          cls: "pubmed-fetcher-folder-button"
+          text: `${APP_ICONS.ui.folder.value} ${folder || "(root)"}`,
+          cls: "research-article-fetcher-folder-button"
         });
         folderBtn.onclick = () => {
           this.onSubmit(folder);
@@ -400,7 +928,7 @@ var FolderSelectionModal = class extends import_obsidian.Modal {
     }
     const cancelBtn = contentEl.createEl("button", {
       text: "Cancel",
-      cls: "pubmed-fetcher-button-cancel"
+      cls: "research-article-fetcher-button-cancel"
     });
     cancelBtn.onclick = () => {
       this.close();
@@ -418,11 +946,11 @@ var ArticleInputModal = class extends import_obsidian.Modal {
   }
   onOpen() {
     const { contentEl } = this;
-    new import_obsidian.Setting(contentEl).setName("Enter PubMed ID or DOI").setHeading();
+    new import_obsidian.Setting(contentEl).setName("Enter article ID or URL").setHeading();
     const input = contentEl.createEl("input", {
       type: "text",
-      placeholder: "PubMed ID (e.g., 38570095) or DOI (e.g., 10.1016/j.clinme.2024.100038)",
-      cls: "pubmed-fetcher-input"
+      placeholder: "PubMed ID, DOI, PMC ID, arXiv ID, or WOS ID",
+      cls: "research-article-fetcher-input"
     });
     const submitBtn = contentEl.createEl("button", { text: "Fetch article" });
     submitBtn.onclick = () => {
@@ -445,7 +973,7 @@ var ArticleInputModal = class extends import_obsidian.Modal {
 
 // src/settings.ts
 var import_obsidian2 = require("obsidian");
-var PubMedFetcherSettingTab = class extends import_obsidian2.PluginSettingTab {
+var ResearchArticleFetcherSettingTab = class extends import_obsidian2.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
     this.plugin = plugin;
@@ -453,12 +981,42 @@ var PubMedFetcherSettingTab = class extends import_obsidian2.PluginSettingTab {
   getSettingDefinitions() {
     return [
       {
-        name: "NCBI API key (optional)",
-        desc: "Enter your NCBI API key for higher rate limits. Get one at https://www.ncbi.nlm.nih.gov/account/",
+        name: "PubMed/PMC API key (optional)",
+        desc: "Enter your NCBI API key for higher PubMed and PMC rate limits. arXiv and CrossRef need no key. Get one at https://www.ncbi.nlm.nih.gov/account/",
         control: {
           type: "text",
           key: "apiKey",
           placeholder: "Your NCBI API key"
+        }
+      },
+      {
+        name: "Web of Science API key",
+        desc: "Required for Web of Science lookups. Each user needs their own free key \u2014 register at https://developer.clarivate.com/ as a public native application and subscribe to the WoS Starter API.",
+        control: {
+          type: "text",
+          key: "wosApiKey",
+          placeholder: "Your Web of Science API key"
+        }
+      },
+      {
+        name: "Failure index filename",
+        desc: "Filename for the optional note listing references that could not be matched. The default is research-article-unmatched.md.",
+        control: {
+          type: "text",
+          key: "failureIndexFilename",
+          placeholder: DEFAULT_SETTINGS.failureIndexFilename
+        }
+      },
+      {
+        name: "Enable failure index page",
+        desc: 'Keep the configured failure-index note updated after note/vault runs. Use the "Open unmatched research article references" command to open it.',
+        render: (setting) => {
+          setting.addToggle(
+            (toggle) => toggle.setValue(this.plugin.settings.enableFailureIndex || false).onChange(async (value) => {
+              this.plugin.settings.enableFailureIndex = value;
+              await this.plugin.saveSettings();
+            })
+          );
         }
       },
       {
@@ -481,21 +1039,37 @@ var PubMedFetcherSettingTab = class extends import_obsidian2.PluginSettingTab {
 };
 
 // main.ts
-var PubMedFetcherPlugin = class extends import_obsidian3.Plugin {
-  get apiKey() {
-    return this.settings.apiKey || "";
+var DEFAULT_FAILURE_INDEX_FILENAME = "research-article-unmatched.md";
+var ResearchArticleFetcherPlugin = class extends import_obsidian3.Plugin {
+  get failureIndexPath() {
+    var _a;
+    const filename = (_a = this.settings.failureIndexFilename) == null ? void 0 : _a.trim();
+    return filename || DEFAULT_FAILURE_INDEX_FILENAME;
   }
   get requestFn() {
     return async (params) => {
-      const response = await (0, import_obsidian3.requestUrl)({ url: params.url });
-      return { status: response.status, json: response.json };
+      const response = await (0, import_obsidian3.requestUrl)({ url: params.url, headers: params.headers });
+      let json;
+      try {
+        json = response.json;
+      } catch (e) {
+        json = void 0;
+      }
+      return { status: response.status, json, text: response.text };
+    };
+  }
+  get fetchCtx() {
+    return {
+      settings: this.settings,
+      requestFn: this.requestFn,
+      delay: (ms) => this.delay(ms)
     };
   }
   async onload() {
     await this.loadSettings();
     this.addCommand({
       id: "fetch-article-note",
-      name: "Create new note with article info",
+      name: "Fetch research article",
       callback: () => {
         new ArticleInputModal(this.app, (input) => {
           void this.fetchArticle(input);
@@ -504,30 +1078,58 @@ var PubMedFetcherPlugin = class extends import_obsidian3.Plugin {
     });
     this.addCommand({
       id: "fetch-article-selected",
-      name: "Update selected link only",
+      name: "Fetch research article for selected link",
       editorCallback: (editor) => {
         const selection = editor.getSelection().trim();
         if (selection) {
           void this.fetchArticleAndInsert(selection, editor);
         } else {
-          new import_obsidian3.Notice("Please select a PubMed ID or DOI first");
+          new import_obsidian3.Notice("Please select an article ID or URL first");
         }
       }
     });
     this.addCommand({
       id: "fetch-article-all",
-      name: "Update all links in current note",
+      name: "Fetch research articles in current note",
       editorCallback: (editor) => {
         void this.fetchAllArticlesInNote(editor);
+      }
+    });
+    this.addCommand({
+      id: "fetch-article-all-force",
+      name: "Force fetch research articles in current note",
+      editorCallback: (editor) => {
+        void this.fetchAllArticlesInNote(editor, true);
+      }
+    });
+    this.addCommand({
+      id: "open-unmatched-article-references",
+      name: "Open unmatched research article references",
+      callback: async () => {
+        const file = this.app.vault.getAbstractFileByPath(this.failureIndexPath);
+        if (!(file instanceof import_obsidian3.TFile)) {
+          new import_obsidian3.Notice("No unmatched article references note found. Enable the failure index and run an update first.");
+          return;
+        }
+        await this.app.workspace.getLeaf(false).openFile(file);
       }
     });
     if (this.settings.enableGlobalCommand) {
       this.addCommand({
         id: "fetch-article-global",
-        name: "Update all links in all notes",
+        name: "Fetch research articles in all notes",
         callback: () => {
           new FolderSelectionModal(this.app, (selectedFolder) => {
             void this.fetchAllArticlesInVault(selectedFolder);
+          }).open();
+        }
+      });
+      this.addCommand({
+        id: "fetch-article-global-force",
+        name: "Force fetch research articles in all notes",
+        callback: () => {
+          new FolderSelectionModal(this.app, (selectedFolder) => {
+            void this.fetchAllArticlesInVault(selectedFolder, true);
           }).open();
         }
       });
@@ -535,16 +1137,16 @@ var PubMedFetcherPlugin = class extends import_obsidian3.Plugin {
     this.registerEvent(
       this.app.workspace.on("editor-menu", (menu, editor) => {
         const selection = editor.getSelection().trim();
-        if (selection && (extractPubMedId(selection) || extractDOI(selection) || extractPMCId(selection))) {
+        if (selection && PROVIDERS.some((provider) => provider.extractId(selection))) {
           menu.addItem((item) => {
-            item.setTitle("Fetch article info").setIcon("download").onClick(() => {
+            item.setTitle("Fetch research article").setIcon(APP_ICONS.ui.fetch.name).onClick(() => {
               void this.fetchArticleAndInsert(selection, editor);
             });
           });
         }
       })
     );
-    this.addSettingTab(new PubMedFetcherSettingTab(this.app, this));
+    this.addSettingTab(new ResearchArticleFetcherSettingTab(this.app, this));
   }
   async loadSettings() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
@@ -562,113 +1164,60 @@ var PubMedFetcherPlugin = class extends import_obsidian3.Plugin {
   }
   async fetchArticle(input) {
     const trimmedInput = input.trim();
-    const pubmedId = extractPubMedId(trimmedInput);
-    if (pubmedId) {
-      await this.fetchByPubMedId(pubmedId);
-      return;
-    }
-    const pmcId = extractPMCId(trimmedInput);
-    if (pmcId) {
-      new import_obsidian3.Notice(`PMC ID found: ${pmcId}. Searching for corresponding PubMed ID...`);
-      const pubmedId2 = await findPubMedIdFromPMC(pmcId, this.apiKey, this.requestFn);
-      if (pubmedId2) {
-        await this.fetchByPubMedIdWithPMC(pubmedId2, pmcId);
-      } else {
-        new import_obsidian3.Notice("Could not find PubMed ID for the given PMC ID.");
+    for (const provider of PROVIDERS) {
+      const id = provider.extractId(trimmedInput);
+      if (!id) continue;
+      try {
+        new import_obsidian3.Notice(`Fetching article from ${provider.displayName}`);
+        const info = await provider.fetch(id, this.fetchCtx);
+        if (info) {
+          void this.displayArticleInfo(info, provider);
+        } else {
+          new import_obsidian3.Notice(`Could not find article for the given ${provider.displayName} ID.`);
+        }
+      } catch (error) {
+        this.handleError(error, `fetchArticle:${provider.id}`);
       }
       return;
     }
-    const doi = extractDOI(trimmedInput);
-    if (doi) {
-      const pubmedId2 = await findPubMedIdFromDOI(doi, this.apiKey, this.requestFn);
-      if (pubmedId2) {
-        await this.fetchByPubMedIdWithDOI(pubmedId2, doi);
-      } else {
-        await this.fetchByDOI(doi);
-      }
-      return;
-    }
-    new import_obsidian3.Notice("Invalid input. Please enter a valid PubMed ID, DOI, or URL");
+    new import_obsidian3.Notice("Invalid input. Please enter a valid article ID or URL");
   }
   async fetchArticleAndInsert(input, editor) {
     const trimmedInput = input.trim();
-    const pubmedId = extractPubMedId(trimmedInput);
-    if (pubmedId) {
-      await this.fetchByPubMedIdAndInsert(pubmedId, editor);
-      return;
-    }
-    const pmcId = extractPMCId(trimmedInput);
-    if (pmcId) {
-      const pubmedId2 = await findPubMedIdFromPMC(pmcId, this.apiKey, this.requestFn);
-      if (pubmedId2) {
-        const articleInfo = await fetchPubMedApiData(pubmedId2, this.apiKey, this.requestFn);
-        articleInfo.pmcId = pmcId;
-        this.insertArticleInfo(articleInfo, editor);
-      } else {
-        new import_obsidian3.Notice("Could not find PubMed ID for the given PMC ID.");
+    for (const provider of PROVIDERS) {
+      const id = provider.extractId(trimmedInput);
+      if (!id) continue;
+      try {
+        new import_obsidian3.Notice(`Fetching article from ${provider.displayName}`);
+        const info = await provider.fetch(id, this.fetchCtx);
+        if (info) {
+          this.insertArticleInfo(info, editor, provider);
+        } else {
+          new import_obsidian3.Notice(`Could not find article for the given ${provider.displayName} ID.`);
+          editor.replaceSelection(this.markedReference(provider, id, "permanent"));
+        }
+      } catch (error) {
+        this.handleError(error, `fetchArticleAndInsert:${provider.id}`);
+        editor.replaceSelection(this.markedReference(provider, id, failureKind(error)));
       }
       return;
     }
-    const doi = extractDOI(trimmedInput);
-    if (doi) {
-      const pubmedId2 = await findPubMedIdFromDOI(doi, this.apiKey, this.requestFn);
-      if (pubmedId2) {
-        await this.fetchByPubMedIdAndInsertWithDOI(pubmedId2, doi, editor);
-      } else {
-        await this.fetchByDOIAndInsert(doi, editor);
-      }
-      return;
-    }
-    new import_obsidian3.Notice("Invalid input. Please enter a valid PubMed ID, PMC ID, DOI, or URL");
+    new import_obsidian3.Notice("Invalid input. Please enter a valid article ID or URL");
   }
-  async fetchByPubMedId(pubmedId) {
-    try {
-      new import_obsidian3.Notice("Fetching article from PubMed");
-      const articleInfo = await fetchPubMedApiData(pubmedId, this.apiKey, this.requestFn);
-      void this.displayArticleInfo(articleInfo);
-    } catch (error) {
-      this.handleError(error, "fetchByPubMedId");
-    }
-  }
-  async fetchByPubMedIdAndInsert(pubmedId, editor) {
-    try {
-      new import_obsidian3.Notice("Fetching article from PubMed");
-      const articleInfo = await fetchPubMedApiData(pubmedId, this.apiKey, this.requestFn);
-      this.insertArticleInfo(articleInfo, editor);
-    } catch (error) {
-      this.handleError(error, "fetchByPubMedIdAndInsert");
-    }
-  }
-  async fetchByDOI(doi) {
-    try {
-      new import_obsidian3.Notice("Fetching article from DOI");
-      const articleInfo = await fetchDOIApiData(doi, this.settings.articleType || "Article", this.requestFn);
-      void this.displayArticleInfo(articleInfo);
-    } catch (error) {
-      this.handleError(error, "fetchByDOI");
-    }
-  }
-  async fetchByDOIAndInsert(doi, editor) {
-    try {
-      new import_obsidian3.Notice("Fetching article from DOI");
-      const articleInfo = await fetchDOIApiData(doi, this.settings.articleType || "Article", this.requestFn);
-      this.insertArticleInfo(articleInfo, editor);
-    } catch (error) {
-      this.handleError(error, "fetchByDOIAndInsert");
-    }
-  }
-  async displayArticleInfo(info) {
-    const link = info.pmcId ? `https://pmc.ncbi.nlm.nih.gov/articles/${info.pmcId}/` : info.pubmedId ? `https://pubmed.ncbi.nlm.nih.gov/${info.pubmedId}/` : `https://doi.org/${cleanDOI(info.doi || "")}`;
+  async displayArticleInfo(info, provider) {
+    var _a;
+    const link = (_a = provider.citationUrl(info)) != null ? _a : info.pmcId ? pmcUrl(info.pmcId) : info.pubmedId ? pubmedUrl(info.pubmedId) : info.arxivId ? arxivAbsUrl(info.arxivId) : info.wosId ? wosRecordUrl(info.wosId) : doiUrl(info.doi || "");
     const content = `# ${info.title}
 
 **Journal:** ${info.journal}  
 **Year:** ${info.year}  
+**Type:** ${articleTypeIcon(info.articleType)} ${info.articleType || "Article"}<br>
 **Link:** ${link}  
-**ID:** ${info.pubmedId || info.doi}
+**ID:** ${info.pubmedId || info.arxivId || info.wosId || info.doi}
 
 ---
 
-*Fetched by PubMed Article Fetcher plugin*`;
+*Fetched by Research Article Fetcher plugin*`;
     let sanitizedTitle = info.title.replace(/[^\w\s-]/g, "").trim().substring(0, 50);
     if (!sanitizedTitle) {
       sanitizedTitle = `article-${Date.now()}`;
@@ -683,40 +1232,10 @@ var PubMedFetcherPlugin = class extends import_obsidian3.Plugin {
     await this.app.vault.create(fileName, content);
     new import_obsidian3.Notice(`Article information saved to ${fileName}`);
   }
-  insertArticleInfo(info, editor) {
-    const citation = formatCitation(info);
+  insertArticleInfo(info, editor, provider) {
+    const citation = formatCitation(info, provider);
     editor.replaceSelection(citation);
     new import_obsidian3.Notice("Article information inserted");
-  }
-  async fetchByPubMedIdWithPMC(pubmedId, pmcId) {
-    try {
-      new import_obsidian3.Notice("Fetching article from PubMed");
-      const articleInfo = await fetchPubMedApiData(pubmedId, this.apiKey, this.requestFn);
-      articleInfo.pmcId = pmcId;
-      void this.displayArticleInfo(articleInfo);
-    } catch (error) {
-      this.handleError(error, "fetchByPubMedIdWithPMC");
-    }
-  }
-  async fetchByPubMedIdWithDOI(pubmedId, doi) {
-    try {
-      new import_obsidian3.Notice("Fetching article from PubMed");
-      const articleInfo = await fetchPubMedApiData(pubmedId, this.apiKey, this.requestFn);
-      articleInfo.doi = doi;
-      void this.displayArticleInfo(articleInfo);
-    } catch (error) {
-      this.handleError(error, "fetchByPubMedIdWithDOI");
-    }
-  }
-  async fetchByPubMedIdAndInsertWithDOI(pubmedId, doi, editor) {
-    try {
-      new import_obsidian3.Notice("Fetching article from PubMed");
-      const articleInfo = await fetchPubMedApiData(pubmedId, this.apiKey, this.requestFn);
-      articleInfo.doi = doi;
-      this.insertArticleInfo(articleInfo, editor);
-    } catch (error) {
-      this.handleError(error, "fetchByPubMedIdAndInsertWithDOI");
-    }
   }
   logArticleProcessingError(kind, id, error, location) {
     if (location) {
@@ -725,112 +1244,193 @@ var PubMedFetcherPlugin = class extends import_obsidian3.Plugin {
     }
     console.error("Error processing article", kind, id, error);
   }
-  async processPubMedLink(content, pubmedId, location) {
-    try {
-      if (isPubMedIdCited(content, pubmedId)) return { content, processed: false };
-      const info = await fetchPubMedApiData(pubmedId, this.apiKey, this.requestFn);
-      if (info && !isAlreadyCited(content, info.pubmedId, info.doi, info.pmcId, info.title, info.year)) {
-        return { content: replacePubMedUrl(content, pubmedId, formatCitation(info)), processed: true };
-      }
-      await this.delay(350);
-    } catch (error) {
-      this.logArticleProcessingError("PubMed ID", pubmedId, error, location);
-    }
-    return { content, processed: false };
+  markedReference(provider, id, kind) {
+    return [
+      failureMarker(provider.markerKey(id), kind),
+      providerIcon(provider.badge.alt, provider.badge.logo),
+      provider.referenceForId(id)
+    ].join(" ");
   }
-  async processPMCLink(content, pmcId, location) {
+  markFailure(provider, content, id, kind) {
+    return provider.replaceUrl(content, id, this.markedReference(provider, id, kind));
+  }
+  async processProviderLink(provider, content, id, location, force) {
+    if (provider.isIdCited(content, id)) return { content, processed: false };
+    if (!force && failureMarkerKind(content, provider.markerKey(id)) === "permanent") {
+      return { content, processed: false, failure: { provider, id, kind: "permanent" } };
+    }
+    let kind = "permanent";
     try {
-      if (isPMCIdCited(content, pmcId)) return { content, processed: false };
-      const pubmedId = await findPubMedIdFromPMC(pmcId, this.apiKey, this.requestFn);
-      await this.delay(350);
-      if (pubmedId) {
-        const info = await fetchPubMedApiData(pubmedId, this.apiKey, this.requestFn);
-        await this.delay(350);
-        if (info) {
-          const articleInfo = { ...info, pmcId };
-          if (!isAlreadyCited(content, articleInfo.pubmedId, articleInfo.doi, articleInfo.pmcId, articleInfo.title, articleInfo.year)) {
-            return { content: replacePMCUrl(content, pmcId, formatCitation(articleInfo)), processed: true };
-          }
+      const info = await provider.fetch(id, this.fetchCtx);
+      await this.delay(provider.rateLimitDelay);
+      if (info && !isAlreadyCited(content, info)) {
+        return { content: provider.replaceUrl(content, id, formatCitation(info, provider)), processed: true };
+      }
+      if (info) return { content, processed: false };
+    } catch (error) {
+      this.logArticleProcessingError(provider.displayName, id, error, location);
+      kind = failureKind(error);
+    }
+    return {
+      content: this.markFailure(provider, content, id, kind),
+      processed: false,
+      failure: { provider, id, kind, failedThisRun: true }
+    };
+  }
+  async processProviderBatch(provider, content, ids, location, force) {
+    let updatedContent = content;
+    let processedCount = 0;
+    const failures = [];
+    if (!provider.fetchMany) return { content: updatedContent, processedCount, failures };
+    const actionable = ids.filter((id) => {
+      if (provider.isIdCited(updatedContent, id)) return false;
+      if (!force && failureMarkerKind(updatedContent, provider.markerKey(id)) === "permanent") {
+        failures.push({ provider, id, kind: "permanent" });
+        return false;
+      }
+      return true;
+    });
+    if (actionable.length === 0) return { content: updatedContent, processedCount, failures };
+    try {
+      const outcomes = await provider.fetchMany(actionable, this.fetchCtx);
+      await this.delay(provider.rateLimitDelay);
+      for (const id of actionable) {
+        const outcome = outcomes.get(id);
+        if (isArticleInfo(outcome) && !isAlreadyCited(updatedContent, outcome)) {
+          updatedContent = provider.replaceUrl(updatedContent, id, formatCitation(outcome, provider));
+          processedCount++;
+        } else if (!isArticleInfo(outcome)) {
+          const kind = outcome ? outcome.failure : "transient";
+          updatedContent = this.markFailure(provider, updatedContent, id, kind);
+          failures.push({ provider, id, kind, failedThisRun: true });
         }
       }
     } catch (error) {
-      this.logArticleProcessingError("PMC ID", pmcId, error, location);
-    }
-    return { content, processed: false };
-  }
-  async processDOILink(content, doi, location) {
-    try {
-      if (isDOICited(content, doi)) return { content, processed: false };
-      const info = await fetchDOIApiData(doi, this.settings.articleType || "Article", this.requestFn);
-      if (!isAlreadyCited(content, info.pubmedId, info.doi, info.pmcId, info.title, info.year)) {
-        return { content: replaceDOIUrl(content, doi, formatCitation(info)), processed: true };
+      this.logArticleProcessingError(provider.displayName, actionable.join(","), error, location);
+      const kind = failureKind(error);
+      for (const id of actionable) {
+        updatedContent = this.markFailure(provider, updatedContent, id, kind);
+        failures.push({ provider, id, kind, failedThisRun: true });
       }
-      await this.delay(350);
-    } catch (error) {
-      this.logArticleProcessingError("DOI", doi, error, location);
     }
-    return { content, processed: false };
+    return { content: updatedContent, processedCount, failures };
   }
-  async processArticleLinks(content, ids, location) {
+  async processArticleLinks(content, found, location, force) {
     let processedCount = 0;
+    let failedCount = 0;
+    const failures = [];
     let updatedContent = content;
-    for (const pubmedId of ids.pubmedIds) {
-      const result = await this.processPubMedLink(updatedContent, pubmedId, location);
-      updatedContent = result.content;
-      if (result.processed) processedCount++;
+    for (const [provider, ids] of found) {
+      if (provider.fetchMany) {
+        const result = await this.processProviderBatch(provider, updatedContent, ids, location, force);
+        updatedContent = result.content;
+        processedCount += result.processedCount;
+        failures.push(...result.failures);
+        continue;
+      }
+      for (const id of ids) {
+        const result = await this.processProviderLink(provider, updatedContent, id, location, force);
+        updatedContent = result.content;
+        if (result.processed) processedCount++;
+        if (result.failure) failures.push(result.failure);
+      }
     }
-    for (const pmcId of ids.pmcIds) {
-      const result = await this.processPMCLink(updatedContent, pmcId, location);
-      updatedContent = result.content;
-      if (result.processed) processedCount++;
-    }
-    for (const doi of ids.dois) {
-      const result = await this.processDOILink(updatedContent, doi, location);
-      updatedContent = result.content;
-      if (result.processed) processedCount++;
-    }
-    return { content: updatedContent, processedCount };
+    failedCount = failures.filter((failure) => failure.failedThisRun).length;
+    return { content: updatedContent, processedCount, failedCount, failures };
   }
-  async fetchAllArticlesInNote(editor) {
+  async writeFailureIndex(failures) {
+    var _a, _b;
+    const existing = this.app.vault.getAbstractFileByPath(this.failureIndexPath);
+    if (failures.length === 0) {
+      if (existing instanceof import_obsidian3.TFile) await this.app.vault.delete(existing);
+      return;
+    }
+    const lines = [
+      "# Unmatched article references",
+      "",
+      "Generated by Research Article Fetcher. \u{1F534} not found \u2014 retried only via a force update \xB7 \u{1F7E1} temporary error \u2014 retried automatically.",
+      ""
+    ];
+    const byFile = /* @__PURE__ */ new Map();
+    for (const failure of failures) {
+      const file = (_a = failure.file) != null ? _a : "";
+      byFile.set(file, [...(_b = byFile.get(file)) != null ? _b : [], failure]);
+    }
+    for (const [file, fileFailures] of byFile) {
+      lines.push(file ? `## [[${file.replace(/\.md$/, "")}]]` : "## Current note", "");
+      for (const failure of fileFailures) {
+        const marker = failureMarkerSymbol(failure.kind);
+        const link = failure.provider.referenceForId(failure.id);
+        const icon = providerBadge(failure.provider.badge.alt, failure.provider.badge.logo, link);
+        lines.push(`- ${marker} ${icon} [\`${failure.id}\`](${link}) \u2014 ${failure.provider.id}`);
+      }
+      lines.push("");
+    }
+    const markdown = lines.join("\n");
+    if (existing instanceof import_obsidian3.TFile) await this.app.vault.modify(existing, markdown);
+    else await this.app.vault.create(this.failureIndexPath, markdown);
+  }
+  async fetchAllArticlesInNote(editor, force = false) {
+    var _a;
     const content = editor.getValue();
-    const ids = extractUniqueIds(content);
-    const totalLinks = ids.pubmedIds.length + ids.pmcIds.length + ids.dois.length;
+    const found = collectProviderIds(content);
+    const totalLinks = [...found.values()].reduce((total, ids) => total + ids.length, 0);
     if (totalLinks === 0) {
-      new import_obsidian3.Notice("No PubMed IDs, PMC IDs, or DOIs found in this note");
+      new import_obsidian3.Notice("No article links found in this note");
       return;
     }
     new import_obsidian3.Notice(`Found ${totalLinks} links to process in current note`);
-    const result = await this.processArticleLinks(content, ids);
-    if (result.processedCount > 0) editor.setValue(result.content);
+    const result = await this.processArticleLinks(content, found, void 0, force);
+    if (result.processedCount > 0 || result.failedCount > 0) editor.setValue(result.content);
     new import_obsidian3.Notice(`Successfully processed ${result.processedCount} of ${totalLinks} links in current note`);
+    if (result.failedCount > 0) {
+      new import_obsidian3.Notice(`\u26A0\uFE0F ${result.failedCount} link(s) could not be matched \u2014 marked with a warning in the note`);
+    }
+    if (this.settings.enableFailureIndex) {
+      const file = (_a = this.app.workspace.getActiveFile()) == null ? void 0 : _a.path;
+      await this.writeFailureIndex(result.failures.map((failure) => ({ ...failure, file })));
+    }
   }
-  async fetchAllArticlesInVault(selectedFolder) {
-    let files = this.app.vault.getMarkdownFiles();
+  async fetchAllArticlesInVault(selectedFolder, force = false) {
+    let files = this.app.vault.getMarkdownFiles().filter((file) => file.path !== this.failureIndexPath);
     if (selectedFolder && selectedFolder !== "/") files = files.filter((file) => file.path.startsWith(selectedFolder));
     if (files.length === 0) {
       new import_obsidian3.Notice(`No markdown files found${selectedFolder ? ` in folder: ${selectedFolder}` : " in vault"}`);
       return;
     }
     const folderInfo = selectedFolder && selectedFolder !== "/" ? ` in folder: ${selectedFolder}` : " in vault";
-    new import_obsidian3.Notice(`Scanning ${files.length} notes${folderInfo} for PubMed/PMC/DOI links...`);
+    new import_obsidian3.Notice(`Scanning ${files.length} notes${folderInfo} for article links...`);
     let totalLinksFound = 0;
     let totalProcessed = 0;
+    let totalFailed = 0;
     let filesProcessed = 0;
+    const allFailures = [];
     for (const file of files) {
       try {
         const content = await this.app.vault.read(file);
-        const ids = extractUniqueIds(content);
-        const linksInFile = ids.pubmedIds.length + ids.pmcIds.length + ids.dois.length;
+        const found = collectProviderIds(content);
+        const linksInFile = [...found.values()].reduce((total, ids) => total + ids.length, 0);
         if (linksInFile === 0) continue;
         totalLinksFound += linksInFile;
         filesProcessed++;
-        const result = await this.processArticleLinks(content, ids, file.path);
+        const result = await this.processArticleLinks(content, found, file.path, force);
         totalProcessed += result.processedCount;
+        totalFailed += result.failedCount;
+        for (const failure of result.failures) {
+          failure.file = file.path;
+        }
+        allFailures.push(...result.failures);
         if (result.content !== content) await this.app.vault.process(file, () => result.content);
       } catch (error) {
         console.error("Error processing file", file.path, error);
       }
     }
+    if (this.settings.enableFailureIndex) {
+      await this.writeFailureIndex(allFailures);
+    }
     new import_obsidian3.Notice(`Global update complete: Processed ${totalProcessed} of ${totalLinksFound} links across ${filesProcessed} notes`);
+    if (totalFailed > 0) {
+      new import_obsidian3.Notice(`\u26A0\uFE0F ${totalFailed} link(s) could not be matched \u2014 marked with a warning in the notes`);
+    }
   }
 };

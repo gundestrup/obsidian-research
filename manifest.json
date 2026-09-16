@@ -1,9 +1,9 @@
 {
 	"id": "pubmed-fetcher",
-	"name": "PubMed Article Fetcher",
-	"version": "1.4.11",
+	"name": "Research Article Fetcher",
+	"version": "1.4.12",
 	"minAppVersion": "1.13.1",
-	"description": "Fetch article metadata from PubMed, PMC, and DOI links automatically.",
+	"description": "Fetch research article metadata from PubMed, PMC, DOI, arXiv, and Web of Science links automatically.",
 	"author": "Svend Gundestrup",
 	"authorUrl": "https://www.borg-collective.eu",
 	"isDesktopOnly": false

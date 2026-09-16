@@ -23,7 +23,7 @@ npm run test:coverage
 - **Fast**: No external API calls
 - **Reliable**: Consistent results
 - **Files**: `tests/*.test.ts`
-- **Coverage**: 165 tests covering extraction, formatting, duplicate detection, URL replacement, and API parsing
+- **Coverage**: 246 tests covering extraction, formatting, duplicate detection, URL replacement, provider chains, and API parsing
 
 ### Watch mode (`npm run test:watch`)
 
@@ -40,13 +40,15 @@ npm run test:coverage
 - PubMed URLs: `https://pubmed.ncbi.nlm.nih.gov/38570095/`
 - PMC URLs: `https://pmc.ncbi.nlm.nih.gov/articles/PMC6792392/`
 - DOI URLs: `https://doi.org/10.1016/j.clinme.2024.100038`
+- arXiv URLs/tags: `https://arxiv.org/abs/2609.12218`, `arXiv:2609.12218`
+- WoS URLs/tags: `https://www.webofscience.com/wos/woscc/full-record/WOS:001607817500001`, `WOS:001607817500001`
 - Direct IDs and edge cases
 
 ✅ **Citation Formatting**
 
 - PubMed + PMC format
 - PubMed + DOI format
-- PubMed/DOI only formats
+- PubMed/DOI/arXiv/WoS formats
 - Custom article types and icons
 
 ✅ **Duplicate Prevention**
@@ -56,10 +58,16 @@ npm run test:coverage
 - Mixed content handling
 - Performance optimization (80% fewer API calls)
 
+✅ **Provider Registry**
+
+- Dispatch order and registry shape
+- PMC→PubMed and DOI→PubMed/CrossRef fetch chains
+- arXiv Atom XML parsing and WoS API-key handling
+
 ✅ **Specificity**
 
-- Only matches exact PubMed/PMC/DOI patterns
-- Rejects other academic sites (arXiv, Google Scholar)
+- Only matches exact PubMed/PMC/DOI/arXiv/WoS patterns
+- Rejects other academic sites (Google Scholar)
 - Rejects general websites (Google, GitHub, Wikipedia)
 
 ## Writing New Tests

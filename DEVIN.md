@@ -8,7 +8,7 @@
 
 - **Project type:** Obsidian plugin (TypeScript, esbuild bundler, Vitest tests)
 - **Entry point:** `main.ts` → bundles to `main.js`
-- **Module structure:** `src/types.ts` | `src/utils.ts` | `src/api.ts` | `src/modals.ts` | `src/settings.ts`
+- **Module structure:** `src/types.ts` | `src/utils.ts` | `src/api.ts` | `src/providers.ts` | `src/modals.ts` | `src/settings.ts`
 - **Build:** `npm run build` (tsc type-check + esbuild production)
 - **Lint:** `npm run lint` (ESLint 9 flat config + obsidianmd plugin)
 - **Test:** `npm test` (Vitest 4, mocked API calls, 80% coverage target)

@@ -1,13 +1,13 @@
-.pubmed-fetcher-button-full {
+.research-article-fetcher-button-full {
 	width: 100%;
 	margin-bottom: 10px;
 }
 
-.pubmed-fetcher-button-cancel {
+.research-article-fetcher-button-cancel {
 	margin-top: 10px;
 }
 
-.pubmed-fetcher-folder-list {
+.research-article-fetcher-folder-list {
 	max-height: 300px;
 	overflow-y: auto;
 	border: 1px solid var(--background-modifier-border);
@@ -15,13 +15,13 @@
 	padding: 8px;
 }
 
-.pubmed-fetcher-folder-button {
+.research-article-fetcher-folder-button {
 	width: 100%;
 	margin-bottom: 4px;
 	text-align: left;
 }
 
-.pubmed-fetcher-input {
+.research-article-fetcher-input {
 	width: 100%;
 	margin-bottom: 20px;
 }

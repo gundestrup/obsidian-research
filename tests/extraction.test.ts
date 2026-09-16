@@ -7,6 +7,8 @@ import {
 	extractPubMedId,
 	extractPMCId,
 	extractDOI,
+	extractArxivId,
+	extractWosId,
 	cleanDOI,
 	extractURLs,
 	extractUniqueIds,
@@ -99,6 +101,51 @@ describe('extractDOI', () => {
 	});
 });
 
+describe('extractArxivId', () => {
+	it.each<[string, string | null]>([
+		// from URLs
+		['https://arxiv.org/abs/2609.12218', '2609.12218'],
+		['https://arxiv.org/abs/2609.12218v2', '2609.12218'],
+		['https://arxiv.org/pdf/2609.12218', '2609.12218'],
+		['http://arxiv.org/abs/1234.5678', '1234.5678'],
+		['https://arxiv.org/abs/hep-th/9901001', 'hep-th/9901001'],
+		['https://arxiv.org/abs/math.GT/0309136', 'math.GT/0309136'],
+		// tag and bare forms
+		['arXiv:2609.12218', '2609.12218'],
+		['arXiv:2609.12218v3', '2609.12218'],
+		['2609.12218', '2609.12218'],
+		['hep-th/9901001', 'hep-th/9901001'],
+		// invalid inputs
+		['', null],
+		['https://pubmed.ncbi.nlm.nih.gov/38570095/', null],
+		['https://arxiv.org/abs/38570095', null],
+		['123.456', null],
+		['10.48550/arXiv.2609.12218', null],
+		['https://arxiv.org/', null],
+	])('extractArxivId(%j) = %j', (input, expected) => {
+		expect(extractArxivId(input)).to.equal(expected);
+	});
+});
+
+describe('extractWosId', () => {
+	it.each<[string, string | null]>([
+		// from URLs
+		['https://www.webofscience.com/wos/woscc/full-record/WOS:001607817500001', 'WOS:001607817500001'],
+		['https://webofscience.com/wos/woscc/full-record/WOS:001607817500001', 'WOS:001607817500001'],
+		['http://www.webofscience.com/wos/woscc/full-record/WOS:A1997BE54K00001', 'WOS:A1997BE54K00001'],
+		// tag and bare forms
+		['WOS:001607817500001', 'WOS:001607817500001'],
+		['wos:001607817500001', 'WOS:001607817500001'],
+		// invalid inputs
+		['', null],
+		['WOS:123', null],
+		['https://pubmed.ncbi.nlm.nih.gov/38570095/', null],
+		['https://www.webofscience.com/wos/woscc/basic-search', null],
+	])('extractWosId(%j) = %j', (input, expected) => {
+		expect(extractWosId(input)).to.equal(expected);
+	});
+});
+
 describe('cleanDOI', () => {
 	it.each<[string, string]>([
 		['doi: 10.1016/j.clinme.2024.100038', '10.1016/j.clinme.2024.100038'],
@@ -144,12 +191,26 @@ describe('URL Extraction from Content', () => {
 		expect(urls.doiUrls).to.have.lengthOf(2);
 	});
 
+	it('should extract arXiv and WoS references from mixed content', () => {
+		const content = `
+			Preprint: https://arxiv.org/abs/2609.12218
+			Tag: arXiv:2609.12218
+			Record: https://www.webofscience.com/wos/woscc/full-record/WOS:001607817500001
+			Tag: WOS:000252077700005
+		`;
+		const urls = extractURLs(content);
+		expect(urls.arxivRefs).to.have.lengthOf(2);
+		expect(urls.wosRefs).to.have.lengthOf(2);
+	});
+
 	it('should handle content with no URLs', () => {
 		const content = 'Just some regular text without any links.';
 		const urls = extractURLs(content);
 		expect(urls.pubmedUrls).to.have.lengthOf(0);
 		expect(urls.pmcUrls).to.have.lengthOf(0);
 		expect(urls.doiUrls).to.have.lengthOf(0);
+		expect(urls.arxivRefs).to.have.lengthOf(0);
+		expect(urls.wosRefs).to.have.lengthOf(0);
 	});
 
 	it('should ignore invalid URLs', () => {
@@ -182,10 +243,25 @@ describe('extractUniqueIds', () => {
 		expect(ids.dois).to.have.members(['10.1016/j.clinme.2024.100038']);
 	});
 
+	it('should extract and deduplicate arXiv and WoS references', () => {
+		const content = `
+			https://arxiv.org/abs/2609.12218
+			arXiv:2609.12218
+			https://arxiv.org/pdf/1234.5678
+			https://www.webofscience.com/wos/woscc/full-record/WOS:001607817500001
+			WOS:001607817500001
+		`;
+		const ids = extractUniqueIds(content);
+		expect(ids.arxivIds).to.have.members(['2609.12218', '1234.5678']);
+		expect(ids.wosIds).to.have.members(['WOS:001607817500001']);
+	});
+
 	it('should return empty arrays when no URLs are present', () => {
 		const ids = extractUniqueIds('Just some regular text without any links.');
 		expect(ids.pubmedIds).to.have.lengthOf(0);
 		expect(ids.pmcIds).to.have.lengthOf(0);
 		expect(ids.dois).to.have.lengthOf(0);
+		expect(ids.arxivIds).to.have.lengthOf(0);
+		expect(ids.wosIds).to.have.lengthOf(0);
 	});
 });

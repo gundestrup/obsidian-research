@@ -9,7 +9,7 @@ export default defineConfig({
 			provider: 'v8',
 			reporter: ['text', 'html', 'lcov'],
 			include: ['src/**/*.ts'],
-			exclude: ['src/types.ts', 'src/modals.ts', 'src/settings.ts'],
+			exclude: ['src/types.ts', 'src/providers/types.ts', 'src/modals.ts', 'src/settings.ts'],
 			thresholds: {
 				statements: 80,
 				branches: 80,

@@ -1,4 +1,4 @@
-# AGENTS.md — PubMed Article Fetcher Obsidian Plugin
+# AGENTS.md — Research Article Fetcher Obsidian Plugin
 
 > **Single source of truth for all coding agents working on this project.**
 >
@@ -8,7 +8,7 @@
 
 ## Project overview
 
-Obsidian plugin that fetches academic article metadata from **PubMed**, **PMC**, and **DOI** identifiers. Users can create new notes from article data, insert citations into existing notes, and batch-update all article links in a note or across the vault.
+Obsidian plugin that fetches academic article metadata from **PubMed**, **PMC**, **DOI**, **arXiv**, and **Web of Science** identifiers. Users can create new notes from article data, insert citations into existing notes, and batch-update all article links in a note or across the vault.
 
 - **Plugin ID:** `pubmed-fetcher`
 - **Author:** Svend Gundestrup
@@ -19,7 +19,7 @@ Obsidian plugin that fetches academic article metadata from **PubMed**, **PMC**,
 ## Tech stack
 
 | Layer | Technology |
-|---|---|
+| --- | --- |
 | Language | TypeScript (strict mode, ES6 target) |
 | Bundler | esbuild (CJS output, `main.ts` → `main.js`) |
 | Linter | ESLint 9 flat config + `eslint-plugin-obsidianmd` |
@@ -30,13 +30,23 @@ Obsidian plugin that fetches academic article metadata from **PubMed**, **PMC**,
 ## Project structure
 
 ```typescript
-main.ts                  # Plugin entry point — PubMedFetcherPlugin class
+main.ts                  # Plugin entry point — ResearchArticleFetcherPlugin class
 src/
   types.ts               # Shared interfaces, types, DEFAULT_SETTINGS
-  utils.ts               # Pure functions: ID extraction, DOI cleaning, citation formatting, duplicate detection
-  api.ts                 # API calls with dependency injection (PubMed E-utilities, CrossRef)
+  utils.ts               # Pure functions: ID extraction, URL patterns/builders, badge markup, duplicate detection
+  citation.ts            # formatCitation — iterates CITATION_ORDER, renders provider and article-type icons
+  icons.ts               # Central typed catalog for shared emoji, Obsidian icons, assets, and article-type icons
+  api.ts                 # Raw API fetchers with dependency injection (PubMed E-utilities, CrossRef, arXiv, WoS Starter)
+  providers/             # One file per provider — each owns extraction + response translation to ArticleInfo
+    types.ts             # ArticleProvider interface, FetchContext
+    index.ts             # PROVIDERS registry + collectProviderIds()
+    pubmed.ts            # PubMed provider + parsePubMedResult (shared by pmc/doi chains)
+    pmc.ts               # PMC provider (resolves PMC → PubMed)
+    doi.ts               # DOI provider + parseCrossRefMessage (resolves DOI → PubMed, falls back to CrossRef)
+    arxiv.ts             # arXiv provider + parseArxivEntry (Atom XML)
+    wos.ts               # Web of Science provider + parseWosDocument (requires wosApiKey)
   modals.ts              # FolderSelectionModal, ArticleInputModal
-  settings.ts            # PubMedFetcherSettingTab
+  settings.ts            # ResearchArticleFetcherSettingTab
 styles.css               # Modal and button styles (loaded by Obsidian)
 tests/
   extraction.test.ts      # Unit tests for ID/URL extraction
@@ -44,6 +54,7 @@ tests/
   duplicate-detection.test.ts  # Unit tests for isAlreadyCited()
   replacement.test.ts     # Unit tests for URL replacement helpers
   api.test.ts             # Unit tests for API functions with mocked requestUrl
+  providers.test.ts       # Unit tests for the provider registry and fetch chains
 manifest.json            # Obsidian plugin manifest
 esbuild.config.mjs       # Build config
 eslint.config.mjs        # ESLint flat config
@@ -59,14 +70,24 @@ tsconfig.json            # TypeScript strict config
 main.ts
   ├── src/types.ts        (types only, no runtime deps)
   ├── src/utils.ts        (pure functions, imports types only)
-  ├── src/api.ts           (imports types + utils, uses dependency-injected requestFn)
-  ├── src/modals.ts        (imports obsidian API only)
+  ├── src/citation.ts     (imports providers/CITATION_ORDER + utils — provider-aware layer above providers)
+  ├── src/api.ts          (imports types only, uses dependency-injected requestFn)
+  ├── src/providers/      (imports types + utils + api, one file per provider)
+  │     └── index.ts      (PROVIDERS registry + collectProviderIds)
+  ├── src/modals.ts       (imports obsidian API only)
   └── src/settings.ts     (imports obsidian API + main plugin type)
 ```
 
 ### Key design patterns
 
-- **Dependency injection for API calls:** All API functions in `src/api.ts` accept a `RequestFunction` parameter (`(params: { url: string }) => Promise<RequestUrlResponse>`) instead of calling `requestUrl` directly. This enables unit testing with `vi.fn()` mocks.
+- **Provider abstraction:** Each article source is an `ArticleProvider` in `src/providers/` exposing `extractId`, `scanPattern`, `isIdCited`, `replaceUrl`, `fetch`, optional `fetchMany` (batch fetch), and a `rateLimitDelay`. arXiv batches via one `id_list` request; the NCBI-backed providers share `fetchViaPubMedMany` (pubmed.ts), which ORs esearch terms and fetches all records in one `esummary`, matching records back to requested IDs via `articleids` (DOI misses fall back to per-item CrossRef). `main.ts` dispatches user input and batch-processing by iterating the `PROVIDERS` registry; `collectProviderIds(content)` scans content for all providers at once. Adding a new provider = new file in `src/providers/` + entry in `PROVIDERS`.
+- **Provider-owned translation:** `src/api.ts` returns provider-native payloads (`PubMedResult`, `CrossRefMessage`, Atom XML string, `WosDocument`). Each provider's `parse*` function is the translation layer that converts the raw payload into the uniform `ArticleInfo`. Provider-native type vocabularies are mapped to a canonical label set by `normalizeArticleType()` in `src/utils.ts`.
+- **Central icon catalog:** `src/icons.ts` is the single catalog for shared status/UI icons and canonical article-type icons. It supports emoji, Obsidian built-in icon names, and hosted SVG/image assets through a typed `IconDefinition`. Providers retain ownership of their provider logos and declare `supportedArticleTypes` using the canonical article-type keys.
+- **Citation badges:** each provider declares `badge: { alt, logo }` and `citationUrl(info)`; `formatCitation` (src/citation.ts) leads with the source provider's badge when one is passed (the referenced source always wins primary), then iterates `CITATION_ORDER` (display priority — differs from registry dispatch order) for remaining badges, rendering every link via the shared `providerBadge` helper (`[![alt|16](raw.githubusercontent.com/.../assets/logo.svg)](source-url)`). Logos live in `assets/`, served from GitHub raw URLs since Obsidian markdown cannot embed plugin-local images. Canonical URL builders (`pubmedUrl`, `pmcUrl`, `doiUrl`, `arxivAbsUrl`, `wosRecordUrl`) live in `src/utils.ts` — the single reference shared by citations, cited-detection, and replacement.
+- **Failure index command:** `open-unmatched-article-references` opens the configured failure-index filename directly when it exists; the default is `research-article-unmatched.md`. Otherwise it tells the user to enable the index and run an update.
+- **Failure markers:** unmatched references gain a leading `🔴(<key>) ![Provider|16](logo)` marker in front of the reference (`🔴` = not found/permanent → no auto-retry; `🟡` = transient like timeout/5xx → auto-retry). `<key>` = `provider.markerKey(id)` (e.g. `pmc=PMC6792392`; never matches `scanPattern`; WoS strips the `WOS:` prefix). The icon uses `providerIcon` (unlinked `![alt|16](logo)` — a linked badge would look cited). `failureKind(error)` classifies throws (`Article not found`/HTTP 404 → permanent). 🔴-marked IDs retry only when the ID changes (stale key won't match) or via the force commands. Markers never count as cited; `replaceAnyIgnoreCase` and the WoS URL regex consume a marker+icon before (or stray marker after) a replaced reference. `fetchMany` returns `Map<id, FetchOutcome>` (`ArticleInfo | {failure: FailureKind}`) so batch misses carry their kind. When `enableFailureIndex` is on, runs (re)write the configured failure-index filename (default `research-article-unmatched.md`) grouping failures by `[[note]]` — the index file itself is excluded from vault scans (its `](url)` links would read as cited); deleted when empty.
+- **Fetch chains stay inside providers:** PMC→PubMed and DOI→PubMed resolution happen inside the provider's `fetch(id, ctx)`. `FetchContext` carries `settings` (including `apiKey`/`wosApiKey`), `requestFn`, and `delay` — provider-specific keys flow through without plumbing changes.
+- **Dependency injection for API calls:** All API functions in `src/api.ts` accept a `RequestFunction` parameter (`(params: { url: string; headers?: Record<string, string> }) => Promise<RequestUrlResponse>`) instead of calling `requestUrl` directly. This enables unit testing with `vi.fn()` mocks.
 - **Pure functions in utils:** `src/utils.ts` contains only pure functions with no side effects — fully testable without mocking.
 - **Settings via Obsidian's loadData/saveData:** Plugin settings are persisted through Obsidian's built-in data persistence.
 
@@ -93,6 +114,16 @@ npm run release      # lint + test + build (used before version bump)
 ### CrossRef
 
 - `https://api.crossref.org/works/{doi}` — fetch article metadata by DOI when no PubMed ID is available
+
+### arXiv
+
+- `https://export.arxiv.org/api/query?id_list={id}` — fetch preprint metadata by arXiv ID, returns Atom XML (parsed via `parseArxivEntry` in `src/api.ts`, since `RequestUrlResponse.text` carries the raw body)
+- No API key required; arXiv's terms of use ask for ≥3s between requests (`arxivProvider.rateLimitDelay = 3000`)
+
+### Web of Science
+
+- `https://api.clarivate.com/apis/wos-starter/v1/documents/{uid}` — fetch record by `WOS:{ut}` UID, JSON response
+- Requires a Clarivate API key sent as the `X-ApiKey` header (the `wosApiKey` setting); the WoS provider throws a settings hint when the key is missing
 
 ## ESLint rules of note
 

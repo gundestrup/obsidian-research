@@ -1,6 +1,6 @@
-# Test Suite for PubMed Article Fetcher
+# Test Suite for Research Article Fetcher
 
-This directory contains the Vitest-based test suite for the PubMed Article Fetcher Obsidian plugin.
+This directory contains the Vitest-based test suite for the Research Article Fetcher Obsidian plugin.
 
 ## Structure
 
@@ -29,6 +29,7 @@ npm run test:coverage
 ## Test Framework
 
 This test suite uses:
+
 - **Vitest** - Fast Vite-native test framework
 - **`vi.fn()`** - Built-in mocking provided by Vitest
 - **`@vitest/coverage-v8`** - Coverage provider
@@ -36,7 +37,9 @@ This test suite uses:
 ## Test Categories
 
 ### Unit Tests (Vitest)
+
 Fast, isolated tests that don't make external API calls:
+
 - `api.test.ts` - API functions with mocked `requestUrl`
 - `extraction.test.ts` - ID extraction from URLs and text
 - `duplicate-detection.test.ts` - Citation duplicate detection logic
@@ -74,6 +77,7 @@ describe('My Feature', () => {
 Run `npm run test:coverage` to generate a coverage report. The report will be available in the `coverage/` directory.
 
 Current coverage targets:
+
 - Statements: 80%+
 - Branches: 80%+
 - Functions: 80%+
@@ -86,10 +90,13 @@ These tests are designed to run in CI/CD pipelines. They are fast, reliable, and
 ## Troubleshooting
 
 ### Tests fail with "Cannot find module"
+
 Run `npm install` to ensure all dependencies are installed.
 
 ### TypeScript errors in tests
+
 Make sure `vitest` is installed and your IDE is using the workspace TypeScript version.
 
 ### Watch mode crashes on syntax errors
+
 This is expected behavior with Vitest watch mode. Fix the syntax error and the tests will auto-restart.

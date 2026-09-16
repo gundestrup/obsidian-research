@@ -4,11 +4,14 @@
 
 import { describe, it, expect, vi, type MockedFunction } from 'vitest';
 import {
-	fetchPubMedApiData,
-	fetchDOIApiData,
+	fetchPubMedResult,
+	fetchPubMedResults,
+	fetchCrossRefMessage,
+	fetchArxivAtom,
+	fetchWosDocument,
 	findPubMedIdFromPMC,
 	findPubMedIdFromDOI,
-	parsePubMedResult,
+	searchPubMedIds,
 	type RequestFunction,
 } from '../src/api';
 import type { RequestUrlResponse } from '../src/types';
@@ -17,127 +20,43 @@ function mockRequest(response: RequestUrlResponse): MockedFunction<RequestFuncti
 	return vi.fn().mockResolvedValue(response);
 }
 
-describe('parsePubMedResult', () => {
-	it('should parse a complete PubMed result', () => {
-		const result = {
+const pubmedResultPayload = {
+	result: {
+		'38570095': {
 			title: 'Test Article',
 			source: 'Test Journal',
 			pubdate: '2024 Jan',
 			doi: '10.1234/test',
-			articleids: [
-				{ idtype: 'pmc', value: 'PMC1234567' },
-			],
+			articleids: [{ idtype: 'pmc', value: 'PMC1234567' }],
 			pubtype: ['Review'],
-		};
+		},
+	},
+};
 
-		const info = parsePubMedResult(result, '38570095', 'Article');
-		expect(info.title).toBe('Test Article');
-		expect(info.journal).toBe('Test Journal');
-		expect(info.year).toBe('2024');
-		expect(info.pubmedId).toBe('38570095');
-		expect(info.doi).toBe('10.1234/test');
-		expect(info.pmcId).toBe('PMC1234567');
-		expect(info.articleType).toBe('Review');
-	});
+describe('fetchPubMedResult', () => {
+	it('should return the raw PubMed result payload', async () => {
+		const requestFn = mockRequest({ status: 200, json: pubmedResultPayload });
+		const result = await fetchPubMedResult('38570095', '', requestFn);
 
-	it('should leave pmcId empty when articleids has no pmc entry', () => {
-		const result = {
-			title: 'Test Article',
-			source: 'Test Journal',
-			pubdate: '2024 Jan',
-			articleids: [{ idtype: 'doi', value: '10.1234/test' }],
-		};
-
-		const info = parsePubMedResult(result, '38570095', 'Article');
-		expect(info.pmcId).toBe('');
-		expect(info.doi).toBe('10.1234/test');
-	});
-
-	it('should extract DOI from articleids when not in top-level field', () => {
-		const result = {
-			title: 'Test',
-			source: 'Journal',
-			pubdate: '2023',
-			articleids: [
-				{ idtype: 'doi', value: 'doi: 10.5678/article' },
-				{ idtype: 'pmc', value: '9876543' },
-			],
-			pubtype: ['Journal Article'],
-		};
-
-		const info = parsePubMedResult(result, '12345', 'Article');
-		expect(info.doi).toBe('10.5678/article');
-		expect(info.pmcId).toBe('PMC9876543');
-	});
-
-	it('should use default article type when pubtype is empty', () => {
-		const result = {
-			title: 'Test',
-			source: 'Journal',
-			pubdate: '2024',
-		};
-
-		const info = parsePubMedResult(result, '12345', 'Review');
-		expect(info.articleType).toBe('Review');
-	});
-
-	it('should handle missing fields with defaults', () => {
-		const result = {};
-
-		const info = parsePubMedResult(result, '12345', 'Article');
-		expect(info.title).toBe('No title available');
-		expect(info.journal).toBe('No journal available');
-		expect(info.year).toBe('No year available');
-	});
-});
-
-describe('fetchPubMedApiData', () => {
-	it('should fetch and parse PubMed article data', async () => {
-		const mockResponse: RequestUrlResponse = {
-			status: 200,
-			json: {
-				result: {
-					'38570095': {
-						title: 'Test Article',
-						source: 'Test Journal',
-						pubdate: '2024 Jan',
-						doi: '10.1234/test',
-						articleids: [
-							{ idtype: 'pmc', value: 'PMC1234567' },
-						],
-						pubtype: ['Review'],
-					},
-				},
-			},
-		};
-
-		const requestFn = mockRequest(mockResponse);
-		const info = await fetchPubMedApiData('38570095', '', requestFn);
-
-		expect(info.title).toBe('Test Article');
-		expect(info.pubmedId).toBe('38570095');
-		expect(info.doi).toBe('10.1234/test');
-		expect(info.pmcId).toBe('PMC1234567');
+		expect(result.title).toBe('Test Article');
+		expect(result.source).toBe('Test Journal');
+		expect(result.pubdate).toBe('2024 Jan');
+		expect(result.doi).toBe('10.1234/test');
+		expect(result.articleids).toEqual([{ idtype: 'pmc', value: 'PMC1234567' }]);
 		expect(requestFn).toHaveBeenCalledTimes(1);
 		expect(requestFn.mock.calls[0][0].url).toContain('esummary.fcgi');
 	});
 
 	it('should include API key in URL when provided', async () => {
-		const mockResponse: RequestUrlResponse = {
+		const requestFn = mockRequest({
 			status: 200,
 			json: {
 				result: {
-					'12345': {
-						title: 'Test',
-						source: 'Journal',
-						pubdate: '2024',
-					},
+					'12345': { title: 'Test', source: 'Journal', pubdate: '2024' },
 				},
 			},
-		};
-
-		const requestFn = mockRequest(mockResponse);
-		await fetchPubMedApiData('12345', 'my-api-key', requestFn);
+		});
+		await fetchPubMedResult('12345', 'my-api-key', requestFn);
 
 		expect(requestFn).toHaveBeenCalledTimes(1);
 		expect(requestFn.mock.calls[0][0].url).toContain('api_key=my-api-key');
@@ -145,99 +64,194 @@ describe('fetchPubMedApiData', () => {
 
 	it('should throw on non-200 status', async () => {
 		const requestFn = mockRequest({ status: 404, json: {} });
-		await expect(fetchPubMedApiData('12345', '', requestFn)).rejects.toThrow('HTTP error! status: 404');
+		await expect(fetchPubMedResult('12345', '', requestFn)).rejects.toThrow('HTTP error! status: 404');
 	});
 
 	it('should throw when article not found', async () => {
 		const requestFn = mockRequest({ status: 200, json: { result: {} } });
-		await expect(fetchPubMedApiData('99999', '', requestFn)).rejects.toThrow('Article not found');
+		await expect(fetchPubMedResult('99999', '', requestFn)).rejects.toThrow('Article not found');
 	});
 });
 
-describe('fetchDOIApiData', () => {
-	it('should fetch and parse DOI article data from CrossRef', async () => {
-		const mockResponse: RequestUrlResponse = {
+describe('fetchPubMedResults', () => {
+	it('should fetch multiple ids in one esummary request', async () => {
+		const requestFn = mockRequest({
 			status: 200,
 			json: {
-				message: {
-					title: ['DOI Article Title'],
-					'short-container-title': ['Test Journal'],
-					created: { 'date-parts': [[2024, 3, 15]] },
-					type: 'journal-article',
+				result: {
+					uids: ['38570095', '36789012'],
+					'38570095': { uid: '38570095', title: 'First' },
+					'36789012': { uid: '36789012', title: 'Second' },
 				},
 			},
-		};
+		});
+		const records = await fetchPubMedResults(['38570095', '36789012'], '', requestFn);
 
-		const requestFn = mockRequest(mockResponse);
-		const info = await fetchDOIApiData('10.1234/test', 'Article', requestFn);
-
-		expect(info.title).toBe('DOI Article Title');
-		expect(info.journal).toBe('Test Journal');
-		expect(info.year).toBe('2024');
-		expect(info.doi).toBe('10.1234/test');
-		expect(info.articleType).toBe('journal-article');
+		expect(requestFn).toHaveBeenCalledTimes(1);
+		expect(requestFn.mock.calls[0][0].url).toContain('id=38570095%2C36789012');
+		expect(records.map((record) => record.title)).toEqual(['First', 'Second']);
 	});
 
-	it('should fall back to container-title when short-container-title is missing', async () => {
-		const mockResponse: RequestUrlResponse = {
+	it('should fall back to result keys when uids is missing', async () => {
+		const requestFn = mockRequest({ status: 200, json: pubmedResultPayload });
+		const records = await fetchPubMedResults(['38570095'], '', requestFn);
+		expect(records[0]?.title).toBe('Test Article');
+	});
+
+	it('should skip uids without a record', async () => {
+		const requestFn = mockRequest({
 			status: 200,
 			json: {
-				message: {
-					title: ['Test'],
-					'container-title': ['Full Journal Name'],
-					created: { 'date-parts': [[2023]] },
+				result: {
+					uids: ['1', '2'],
+					'1': { uid: '1', title: 'Only' },
 				},
 			},
-		};
+		});
+		const records = await fetchPubMedResults(['1', '2'], '', requestFn);
+		expect(records).toHaveLength(1);
+	});
 
-		const requestFn = mockRequest(mockResponse);
-		const info = await fetchDOIApiData('10.1234/test', 'Article', requestFn);
+	it('should handle a response without a result object', async () => {
+		const requestFn = mockRequest({ status: 200, json: {} });
+		expect(await fetchPubMedResults(['1'], '', requestFn)).toEqual([]);
+	});
 
-		expect(info.journal).toBe('Full Journal Name');
+	it('should return an empty array for empty input without a request', async () => {
+		const requestFn = mockRequest({ status: 200, json: {} });
+		expect(await fetchPubMedResults([], '', requestFn)).toEqual([]);
+		expect(requestFn).not.toHaveBeenCalled();
+	});
+
+	it('should throw on non-200 status', async () => {
+		const requestFn = mockRequest({ status: 503, json: {} });
+		await expect(fetchPubMedResults(['1'], '', requestFn)).rejects.toThrow('HTTP error! status: 503');
+	});
+});
+
+describe('searchPubMedIds', () => {
+	it('should return the full idlist for a combined OR term', async () => {
+		const requestFn = mockRequest({
+			status: 200,
+			json: { esearchresult: { idlist: ['30321896', '38293938'] } },
+		});
+		const ids = await searchPubMedIds('"PMC6792392"[pmcid] OR "PMC11056128"[pmcid]', '', requestFn);
+		expect(ids).toEqual(['30321896', '38293938']);
+		expect(requestFn.mock.calls[0][0].url).toContain('esearch.fcgi');
+		expect(requestFn.mock.calls[0][0].url).toContain('PMC6792392');
+	});
+
+	it('should include retmax when provided', async () => {
+		const requestFn = mockRequest({ status: 200, json: { esearchresult: { idlist: [] } } });
+		await searchPubMedIds('"x"[doi]', '', requestFn, '100');
+		expect(requestFn.mock.calls[0][0].url).toContain('retmax=100');
+	});
+
+	it('should throw on non-200 status', async () => {
+		const requestFn = mockRequest({ status: 500, json: {} });
+		await expect(searchPubMedIds('term', '', requestFn)).rejects.toThrow('HTTP error');
+	});
+
+	it('should throw on error', async () => {
+		const requestFn = vi.fn().mockRejectedValue(new Error('Network error'));
+		await expect(searchPubMedIds('term', '', requestFn)).rejects.toThrow('Network error');
+	});
+});
+
+describe('fetchCrossRefMessage', () => {
+	const crossRefPayload = {
+		message: {
+			title: ['DOI Article Title'],
+			'short-container-title': ['Test Journal'],
+			created: { 'date-parts': [[2024, 3, 15]] },
+			type: 'journal-article',
+		},
+	};
+
+	it('should return the raw CrossRef message payload', async () => {
+		const requestFn = mockRequest({ status: 200, json: crossRefPayload });
+		const message = await fetchCrossRefMessage('10.1234/test', requestFn);
+
+		expect(message.title).toEqual(['DOI Article Title']);
+		expect(message['short-container-title']).toEqual(['Test Journal']);
+		expect(message.type).toBe('journal-article');
 	});
 
 	it('should throw on non-200 status', async () => {
 		const requestFn = mockRequest({ status: 404, json: {} });
-		await expect(fetchDOIApiData('10.1234/test', 'Article', requestFn)).rejects.toThrow('HTTP error! status: 404');
+		await expect(fetchCrossRefMessage('10.1234/test', requestFn)).rejects.toThrow('HTTP error! status: 404');
 	});
 
 	it('should throw when message is missing', async () => {
 		const requestFn = mockRequest({ status: 200, json: {} });
-		await expect(fetchDOIApiData('10.1234/test', 'Article', requestFn)).rejects.toThrow('Article not found');
+		await expect(fetchCrossRefMessage('10.1234/test', requestFn)).rejects.toThrow('Article not found');
+	});
+});
+
+describe('fetchArxivAtom', () => {
+	it('should return the raw Atom XML body', async () => {
+		const xml = '<feed><entry><id>http://arxiv.org/abs/2609.12218v1</id></entry></feed>';
+		const requestFn = mockRequest({ status: 200, json: undefined, text: xml });
+
+		const body = await fetchArxivAtom('2609.12218', requestFn);
+		expect(body).toBe(xml);
+		expect(requestFn.mock.calls[0][0].url).toContain('export.arxiv.org/api/query');
+		expect(requestFn.mock.calls[0][0].url).toContain('id_list=2609.12218');
 	});
 
-	it('should fall back to defaults when message fields are missing', async () => {
-		const requestFn = mockRequest({ status: 200, json: { message: {} } });
-		const info = await fetchDOIApiData('10.1234/test', 'Article', requestFn);
-
-		expect(info.title).toBe('No title available');
-		expect(info.journal).toBe('No journal available');
-		expect(info.year).toBe('No year available');
-		expect(info.articleType).toBe('Article');
+	it('should join multiple ids into one id_list query', async () => {
+		const requestFn = mockRequest({ status: 200, json: undefined, text: '<feed/>' });
+		await fetchArxivAtom(['2609.12218', '1234.5678'], requestFn);
+		expect(requestFn).toHaveBeenCalledTimes(1);
+		expect(requestFn.mock.calls[0][0].url).toContain('id_list=2609.12218%2C1234.5678');
 	});
 
-	it('should fall back to container-title when short-container-title is missing', async () => {
-		const requestFn = mockRequest({
-			status: 200,
-			json: {
-				message: {
-					'container-title': ['Container Journal'],
-					type: 'journal-article',
-					created: { 'date-parts': [[2023]] },
-				},
-			},
-		});
-		const info = await fetchDOIApiData('10.1234/test', 'Article', requestFn);
-
-		expect(info.journal).toBe('Container Journal');
-		expect(info.articleType).toBe('journal-article');
-		expect(info.year).toBe('2023');
+	it('should throw on non-200 status', async () => {
+		const requestFn = mockRequest({ status: 429, json: undefined });
+		await expect(fetchArxivAtom('2609.12218', requestFn)).rejects.toThrow('HTTP error! status: 429');
 	});
 
-	it('should use Article when type and defaultArticleType are both missing', async () => {
-		const requestFn = mockRequest({ status: 200, json: { message: {} } });
-		const info = await fetchDOIApiData('10.1234/test', '', requestFn);
-		expect(info.articleType).toBe('Article');
+	it('should throw when response has no text body', async () => {
+		const requestFn = mockRequest({ status: 200, json: undefined });
+		await expect(fetchArxivAtom('2609.12218', requestFn)).rejects.toThrow('Article not found');
+	});
+});
+
+describe('fetchWosDocument', () => {
+	const wosPayload = {
+		uid: 'WOS:001607817500001',
+		title: 'Test WoS Article',
+		types: ['Article'],
+		source: { sourceTitle: 'Nature', publishYear: 2024 },
+		identifiers: { doi: '10.1038/test.456', pmid: '38570095' },
+	};
+
+	it('should return the raw WoS document payload', async () => {
+		const requestFn = mockRequest({ status: 200, json: wosPayload });
+		const doc = await fetchWosDocument('WOS:001607817500001', 'key-123', requestFn);
+
+		expect(doc.uid).toBe('WOS:001607817500001');
+		expect(doc.title).toBe('Test WoS Article');
+		expect(doc.source?.sourceTitle).toBe('Nature');
+		expect(doc.identifiers?.doi).toBe('10.1038/test.456');
+	});
+
+	it('should send the API key via X-ApiKey header', async () => {
+		const requestFn = mockRequest({ status: 200, json: { title: 'T' } });
+		await fetchWosDocument('WOS:001607817500001', 'key-123', requestFn);
+		expect(requestFn.mock.calls[0][0].headers?.['X-ApiKey']).toBe('key-123');
+		expect(requestFn.mock.calls[0][0].url).toContain('wos-starter');
+		expect(requestFn.mock.calls[0][0].url).toContain('WOS%3A001607817500001');
+	});
+
+	it('should throw on non-200 status', async () => {
+		const requestFn = mockRequest({ status: 404, json: {} });
+		await expect(fetchWosDocument('WOS:001607817500001', 'k', requestFn)).rejects.toThrow('HTTP error! status: 404');
+	});
+
+	it('should throw when the document payload is empty', async () => {
+		const requestFn = mockRequest({ status: 200, json: null });
+		await expect(fetchWosDocument('WOS:001607817500001', 'k', requestFn)).rejects.toThrow('Article not found');
 	});
 });
 
@@ -366,7 +380,7 @@ describe('Edge cases — API URL encoding', () => {
 		};
 
 		const requestFn = mockRequest(mockResponse);
-		await fetchPubMedApiData('12345', 'key with spaces', requestFn);
+		await fetchPubMedResult('12345', 'key with spaces', requestFn);
 		expect(requestFn.mock.calls[0][0].url).toContain('api_key=key+with+spaces');
 	});
 });
@@ -374,12 +388,12 @@ describe('Edge cases — API URL encoding', () => {
 describe('Edge cases — malformed response bodies', () => {
 	it('should handle PubMed response with null json', async () => {
 		const requestFn = mockRequest({ status: 200, json: null });
-		await expect(fetchPubMedApiData('12345', '', requestFn)).rejects.toThrow();
+		await expect(fetchPubMedResult('12345', '', requestFn)).rejects.toThrow();
 	});
 
 	it('should handle CrossRef response with null json', async () => {
 		const requestFn = mockRequest({ status: 200, json: null });
-		await expect(fetchDOIApiData('10.1234/test', 'Article', requestFn)).rejects.toThrow();
+		await expect(fetchCrossRefMessage('10.1234/test', requestFn)).rejects.toThrow();
 	});
 
 	it('should handle PubMed search response with missing esearchresult', async () => {
@@ -415,43 +429,5 @@ describe('Edge cases — PMC non-200 responses', () => {
 		const requestFn = mockRequest({ status: 429, json: {} });
 		const result = await findPubMedIdFromPMC('PMC9999999', '', requestFn);
 		expect(result).toBeNull();
-	});
-});
-
-describe('Edge cases — parsePubMedResult DOI cleaning', () => {
-	it('should clean doi: prefix from top-level doi field', () => {
-		const result = {
-			title: 'Test',
-			source: 'Journal',
-			pubdate: '2024',
-			doi: 'doi: 10.1234/test',
-		};
-
-		const info = parsePubMedResult(result, '12345', 'Article');
-		expect(info.doi).toBe('10.1234/test');
-	});
-
-	it('should clean doi: prefix from elocationid field', () => {
-		const result = {
-			title: 'Test',
-			source: 'Journal',
-			pubdate: '2024',
-			elocationid: 'doi: 10.5678/article',
-		};
-
-		const info = parsePubMedResult(result, '12345', 'Article');
-		expect(info.doi).toBe('10.5678/article');
-	});
-
-	it('should trim whitespace from top-level doi', () => {
-		const result = {
-			title: 'Test',
-			source: 'Journal',
-			pubdate: '2024',
-			doi: '  10.1234/test  ',
-		};
-
-		const info = parsePubMedResult(result, '12345', 'Article');
-		expect(info.doi).toBe('10.1234/test');
 	});
 });
