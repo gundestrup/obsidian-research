@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Exec(npm)",
+      "Exec(npx)",
+      "Exec(node)",
+      "Exec(semgrep)",
+      "Exec(eslint)"
+    ]
+  }
+}
