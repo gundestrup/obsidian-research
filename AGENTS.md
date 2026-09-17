@@ -60,6 +60,7 @@ esbuild.config.mjs       # Build config
 eslint.config.mjs        # ESLint flat config
 vitest.config.ts         # Vitest config with v8 coverage
 tsconfig.json            # TypeScript strict config
+.devin/config.json       # Devin CLI project permissions (allow-listed commands)
 ```
 
 ## Architecture
@@ -135,7 +136,7 @@ npm run release      # lint + test + build + security (used before version bump)
 
 ## Recommended IDE extensions
 
-`.vscode/extensions.json` recommends the extensions matching the toolchain: ESLint, Vitest Explorer, Semgrep, SonarLint (connected mode is preconfigured in `.vscode/settings.json`), markdownlint, and GitHub Actions.
+`.vscode/extensions.json` recommends the extensions matching the toolchain: ESLint, Vitest Explorer, Semgrep, SonarLint (connected mode is preconfigured in `.vscode/settings.json`), markdownlint, and GitHub Actions. To see Semgrep findings in the Problems panel, set `semgrep.scan.configuration` to `[".semgrep.yml"]` in workspace settings.
 
 ## Testing guidelines
 
