@@ -133,6 +133,10 @@ npm run release      # lint + test + build + security (used before version bump)
 - `@typescript-eslint/no-unused-vars` — error level (args excluded)
 - Test files relax unused vars and unused expressions
 
+## Recommended IDE extensions
+
+`.vscode/extensions.json` recommends the extensions matching the toolchain: ESLint, Vitest Explorer, Semgrep, SonarLint (connected mode is preconfigured in `.vscode/settings.json`), markdownlint, and GitHub Actions.
+
 ## Testing guidelines
 
 - **Unit tests** live in `tests/` and import directly from `src/` modules (not duplicated code)

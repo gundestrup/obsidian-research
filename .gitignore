@@ -15,7 +15,8 @@ yarn-error.log*
 
 # IDE files
 .idea/
-.vscode/
+.vscode/*
+!.vscode/extensions.json
 *.swp
 *.swo
 *~
