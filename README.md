@@ -67,7 +67,7 @@ Enable **Failure index page** in settings to maintain the configured failure-ind
 Each citation is prefixed with a small provider logo badge (hosted in `assets/` on GitHub) that links to the source, followed by a central article-type icon, the article type, linked title, year, and journal. Extra identifiers appear as trailing badges. Shared status and article-type icons are centrally defined so their representation can be changed in one place.
 
 | Type | Example | Result |
-|------|---------|--------|
+| ------ | --------- | -------- |
 | PubMed ID | `38570095` | `[PubMed badge] Review: [Title](link) - Year, Journal` |
 | PMC ID | `PMC6792392` | `[PubMed badge] Article: [Title](link) - Year, Journal [PMC badge](full-text)` |
 | DOI | `10.1016/j.clinme.2024.100038` | `[DOI badge] Article: [Title](link) - Year, Journal` |
