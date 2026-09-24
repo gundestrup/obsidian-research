@@ -21,7 +21,7 @@
 	"author": "Svend Gundestrup",
 	"license": "AGPL-3.0",
 	"devDependencies": {
-		"@types/node": "^26.0.0",
+		"@types/node": "^26.6.1",
 		"@typescript-eslint/eslint-plugin": "^8.65.0",
 		"@typescript-eslint/parser": "^8.65.0",
 		"@vitest/coverage-v8": "^5.0.0",
