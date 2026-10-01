@@ -22,8 +22,8 @@ Obsidian plugin that fetches academic article metadata from **PubMed**, **PMC**,
 | --- | --- |
 | Language | TypeScript (strict mode, ES6 target) |
 | Bundler | esbuild (CJS output, `main.ts` → `main.js`) |
-| Linter | ESLint 9 flat config + `eslint-plugin-obsidianmd` |
-| Tests | Vitest 4 + `@vitest/coverage-v8` |
+| Linter | ESLint 10 flat config + `eslint-plugin-obsidianmd` |
+| Tests | Vitest 5 + `@vitest/coverage-v8` |
 | Platform | Obsidian plugin API (`obsidian` npm package) |
 | Node | ≥ 20 (CI uses Node 24) |
 
@@ -58,7 +58,7 @@ tests/
 manifest.json            # Obsidian plugin manifest
 esbuild.config.mjs       # Build config
 eslint.config.mjs        # ESLint flat config
-vitest.config.ts         # Vitest config with v8 coverage
+vitest.config.mts        # Vitest config with v8 coverage (ESM — .mts, not .ts)
 tsconfig.json            # TypeScript strict config
 .devin/config.json       # Devin CLI project permissions (allow-listed commands)
 ```
@@ -181,3 +181,5 @@ GitHub Actions workflow (`.github/workflows/release.yml`) triggers on tag push:
 - `npm run build` runs `tsc -p tsconfig.build.json -noEmit -skipLibCheck` then `esbuild.config.mjs production`
 - `esbuild.config.mjs` uses Node's built-in `module.builtinModules` (no external `builtin-modules` package)
 - `src/settings.ts` imports `PluginSettingsHolder` from `src/types.ts` instead of the full plugin class from `main.ts`
+- `typescript` stays pinned at `6.0.3` — TypeScript 7 (native, Go-based `tsgo`)
+  is a new major; evaluate deliberately, don't bump in routine sweeps
