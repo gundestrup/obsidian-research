@@ -1,0 +1,36 @@
+{
+  "repo_notes": [
+    { "content": "Obsidian plugin (TypeScript, strict mode) — plugin ID pubmed-fetcher — that fetches academic article metadata from PubMed, PMC, DOI, arXiv, and Web of Science identifiers: create notes, insert citations, batch-update links." },
+    { "content": "Provider architecture: src/providers/ has one file per provider, each owns ID extraction + response translation to a shared ArticleInfo type; providers/index.ts holds the PROVIDERS registry and collectProviderIds(). Chains resolve PMC->PubMed and DOI->PubMed with CrossRef fallback." },
+    { "content": "src/api.ts exposes raw fetchers with dependency injection via RequestFunction — never call requestUrl directly in API functions (enables mocking in tests)." },
+    { "content": "src/citation.ts formatCitation iterates CITATION_ORDER rendering provider + article-type icons from the central typed catalog in src/icons.ts." },
+    { "content": "Build: esbuild bundles main.ts -> main.js (CJS). Tests: Vitest + v8 coverage. ESLint flat config + eslint-plugin-obsidianmd with sentence-case acronyms/ignoreWords configured — add proper nouns to config, not eslint-disable." },
+    { "content": "See AGENTS.md for the full module graph, conventions, and testing guidelines." }
+  ],
+  "pages": [
+    {
+      "title": "Architecture Overview",
+      "purpose": "Plugin entry point (main.ts ResearchArticleFetcherPlugin), provider registry pattern, dependency-injected API layer, and how notes/citations flow through modals and settings",
+      "page_notes": [{ "content": "Include Mermaid diagram: identifier input -> provider chain -> API fetcher -> ArticleInfo -> citation/note" }]
+    },
+    {
+      "title": "Providers",
+      "purpose": "One file per provider (pubmed, pmc, doi, arxiv, wos): extraction + translation to ArticleInfo, the ArticleProvider interface, FetchContext, and the PMC->PubMed / DOI->PubMed->CrossRef resolution chains",
+      "parent": "Architecture Overview"
+    },
+    {
+      "title": "Citations and Formatting",
+      "purpose": "formatCitation, CITATION_ORDER, duplicate detection (isAlreadyCited), URL patterns/replacement helpers, and the central icon catalog",
+      "parent": "Architecture Overview"
+    },
+    {
+      "title": "UI: Modals and Settings",
+      "purpose": "FolderSelectionModal, ArticleInputModal, ResearchArticleFetcherSettingTab, and styles.css — how users create notes and batch-update links",
+      "parent": "Architecture Overview"
+    },
+    {
+      "title": "Testing and Build",
+      "purpose": "Vitest unit tests with mocked requestUrl, esbuild CJS bundling, ESLint/obsidianmd rules, and release conventions"
+    }
+  ]
+}
