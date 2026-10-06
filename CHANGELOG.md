@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- `package.json` license corrected to the SPDX expression
+  `AGPL-3.0-or-later` (was the deprecated `AGPL-3.0`).
+
 ### Security
 
 - Dev-tooling audit gate: `scripts/npm-audit.mjs` + `.audit-allow.json`

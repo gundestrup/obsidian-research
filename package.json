@@ -20,7 +20,7 @@
   },
   "keywords": [],
   "author": "Svend Gundestrup",
-  "license": "AGPL-3.0",
+  "license": "AGPL-3.0-or-later",
   "devDependencies": {
     "@types/node": "^26.6.1",
     "@typescript-eslint/eslint-plugin": "^8.70.1",
