@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Security
+
+- Dev-tooling audit gate: `scripts/npm-audit.mjs` + `.audit-allow.json`
+  — patchable transitive deps forced to fixed versions via `overrides`
+  (smol-toml 1.9.0, katex 0.18.2); allowlisted entries carry reasons
+  and expiry — braces (unpatched upstream, dev-only) and source-map-js
+  (patch pending `min-release-age` quarantine).
+
 ## [1.4.14] - 2026-09-16
 
 ### Fixed

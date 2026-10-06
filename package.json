@@ -1,41 +1,43 @@
 {
-	"name": "obsidian-research-article-fetcher",
-	"version": "1.4.14",
-	"description": "Obsidian plugin to fetch research article metadata from PubMed, PMC, DOI, arXiv, and Web of Science",
-	"main": "main.js",
-	"scripts": {
-		"dev": "node esbuild.config.mjs",
-		"build": "tsc -p tsconfig.build.json -noEmit -skipLibCheck && node esbuild.config.mjs production",
-		"preversion": "node version-bump.mjs --preversion",
-		"version": "node version-bump.mjs",
-		"postversion": "git push && git push --tags",
-		"release": "npm run lint && npm test && npm run build && npm run security",
-		"lint": "eslint **/*.ts && npm run lint:markdown",
-		"lint:markdown": "markdownlint-cli2",
-		"security": "semgrep scan --config .semgrep.yml --error --exclude main.js --exclude node_modules .",
-		"test": "vitest run",
-		"test:watch": "vitest",
-		"test:coverage": "vitest run --coverage"
-	},
-	"keywords": [],
-	"author": "Svend Gundestrup",
-	"license": "AGPL-3.0",
-	"devDependencies": {
-		"@types/node": "^26.6.1",
-		"@typescript-eslint/eslint-plugin": "^8.70.1",
-		"@typescript-eslint/parser": "^8.70.1",
-		"@vitest/coverage-v8": "^5.0.1",
-		"esbuild": "^0.28.0",
-		"eslint": "^10.0.0",
-		"eslint-plugin-obsidianmd": "^0.4.0",
-		"markdownlint-cli2": "0.23.3",
-		"obsidian": "1.13.1",
-		"tslib": "^2.8.1",
-		"typescript": "6.0.3",
-		"vitest": "^5.0.1"
-	},
-	"overrides": {
-		"moment": "^2.31.0",
-		"smol-toml": "1.8.0"
-	}
+  "name": "obsidian-research-article-fetcher",
+  "version": "1.4.14",
+  "description": "Obsidian plugin to fetch research article metadata from PubMed, PMC, DOI, arXiv, and Web of Science",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc -p tsconfig.build.json -noEmit -skipLibCheck && node esbuild.config.mjs production",
+    "preversion": "node version-bump.mjs --preversion",
+    "version": "node version-bump.mjs",
+    "postversion": "git push && git push --tags",
+    "release": "npm run lint && npm test && npm run build && npm run security",
+    "lint": "eslint **/*.ts && npm run lint:markdown",
+    "lint:markdown": "markdownlint-cli2",
+    "security": "semgrep scan --config .semgrep.yml --error --exclude main.js --exclude node_modules .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "audit": "node scripts/npm-audit.mjs"
+  },
+  "keywords": [],
+  "author": "Svend Gundestrup",
+  "license": "AGPL-3.0",
+  "devDependencies": {
+    "@types/node": "^26.6.1",
+    "@typescript-eslint/eslint-plugin": "^8.70.1",
+    "@typescript-eslint/parser": "^8.70.1",
+    "@vitest/coverage-v8": "^5.0.1",
+    "esbuild": "^0.28.0",
+    "eslint": "^10.0.0",
+    "eslint-plugin-obsidianmd": "^0.4.0",
+    "markdownlint-cli2": "0.23.3",
+    "obsidian": "1.13.1",
+    "tslib": "^2.8.1",
+    "typescript": "6.0.3",
+    "vitest": "^5.0.1"
+  },
+  "overrides": {
+    "moment": "^2.31.0",
+    "smol-toml": "^1.9.0",
+    "katex": "^0.18.2"
+  }
 }
