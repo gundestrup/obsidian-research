@@ -3,7 +3,8 @@
     { "content": "Obsidian plugin (TypeScript, strict mode) — plugin ID pubmed-fetcher — that fetches academic article metadata from PubMed, PMC, DOI, arXiv, and Web of Science identifiers: create notes, insert citations, batch-update links." },
     { "content": "Provider architecture: src/providers/ has one file per provider, each owns ID extraction + response translation to a shared ArticleInfo type; providers/index.ts holds the PROVIDERS registry and collectProviderIds(). Chains resolve PMC->PubMed and DOI->PubMed with CrossRef fallback." },
     { "content": "src/api.ts exposes raw fetchers with dependency injection via RequestFunction — never call requestUrl directly in API functions (enables mocking in tests)." },
-    { "content": "src/citation.ts formatCitation iterates CITATION_ORDER rendering provider + article-type icons from the central typed catalog in src/icons.ts." },
+    { "content": "src/citation.ts formatCitation iterates CITATION_ORDER rendering provider + article-type icons from the central typed catalog in src/icons.ts. Article types are normalized to a uniform vocabulary (Article, Review, Preprint, ...) across providers." },
+    { "content": "Unmatched references are kept and marked: permanent (not found) vs transient (auto-retry) via failureMarker/failureMarkerKind/failureKind in src/utils.ts; an optional generated failure-index note (research-article-unmatched.md) lists every unmatched link grouped by source note and is deleted when empty." },
     { "content": "Build: esbuild bundles main.ts -> main.js (CJS). Tests: Vitest + v8 coverage. ESLint flat config + eslint-plugin-obsidianmd with sentence-case acronyms/ignoreWords configured — add proper nouns to config, not eslint-disable." },
     { "content": "See AGENTS.md for the full module graph, conventions, and testing guidelines." }
   ],
@@ -15,17 +16,22 @@
     },
     {
       "title": "Providers",
-      "purpose": "One file per provider (pubmed, pmc, doi, arxiv, wos): extraction + translation to ArticleInfo, the ArticleProvider interface, FetchContext, and the PMC->PubMed / DOI->PubMed->CrossRef resolution chains",
+      "purpose": "One file per provider (pubmed, pmc, doi, arxiv, wos): extraction + translation to ArticleInfo, the ArticleProvider interface, FetchContext, optional fetchMany batch fetching, rateLimitDelay, and the PMC->PubMed / DOI->PubMed->CrossRef resolution chains",
       "parent": "Architecture Overview"
     },
     {
       "title": "Citations and Formatting",
-      "purpose": "formatCitation, CITATION_ORDER, duplicate detection (isAlreadyCited), URL patterns/replacement helpers, and the central icon catalog",
+      "purpose": "formatCitation, CITATION_ORDER, duplicate detection (isAlreadyCited), URL patterns/replacement helpers, article-type normalization, and the central icon catalog in src/icons.ts",
+      "parent": "Architecture Overview"
+    },
+    {
+      "title": "Commands and Unmatched References",
+      "purpose": "Commands in main.ts (fetch for note/selection/current/all-notes with Force variants, open-unmatched), vault-wide updates gated by the enableGlobalCommand setting via FolderSelectionModal, permanent/transient failure markers (utils.ts failureMarker/failureKind), and writeFailureIndex maintaining the research-article-unmatched.md index",
       "parent": "Architecture Overview"
     },
     {
       "title": "UI: Modals and Settings",
-      "purpose": "FolderSelectionModal, ArticleInputModal, ResearchArticleFetcherSettingTab, and styles.css — how users create notes and batch-update links",
+      "purpose": "FolderSelectionModal, ArticleInputModal, ResearchArticleFetcherSettingTab (NCBI and Web of Science API keys, failure-index filename/enable toggle, global-update safety toggle), and styles.css",
       "parent": "Architecture Overview"
     },
     {
