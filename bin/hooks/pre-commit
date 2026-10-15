@@ -1,0 +1,33 @@
+#!/bin/bash
+# Pre-commit hook — fast lint on staged files only
+
+STAGED_MD=$(git diff --cached --name-only --diff-filter=AM -- '*.md')
+STAGED_TS=$(git diff --cached --name-only --diff-filter=AM -- '*.ts')
+
+FAILED=0
+
+if [ -n "$STAGED_MD" ]; then
+    echo "🔍 Running markdownlint on staged *.md..."
+    echo "$STAGED_MD" | xargs npx markdownlint-cli2 || FAILED=1
+fi
+
+if [ -n "$STAGED_TS" ]; then
+    echo "🔍 Running eslint on staged *.ts..."
+    echo "$STAGED_TS" | xargs npx eslint || FAILED=1
+
+    # console.debug is banned project-wide (use console.error); debugger must not ship
+    if echo "$STAGED_TS" | xargs grep -HnE '\bdebugger\b|console\.debug' 2>/dev/null; then
+        echo "❌ debugger/console.debug found in staged files"
+        FAILED=1
+    fi
+fi
+
+if [ "$FAILED" -ne 0 ]; then
+    echo ""
+    echo "❌ Pre-commit checks failed"
+    echo "Fix the issues or use 'git commit --no-verify' to skip"
+    exit 1
+fi
+
+echo "✅ Pre-commit checks passed"
+exit 0

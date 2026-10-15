@@ -1,0 +1,35 @@
+#!/bin/bash
+# Pre-push hook — full quality gate before pushing, mirrors CI.
+# npm run release = lint + test + build + semgrep local-rules scan;
+# audit adds the dev-tooling dependency gate; the final diff check
+# enforces the committed main.js bundle staying in sync with src/.
+
+echo "🔍 Running pre-push checks (lint + test + build + security + audit)..."
+echo ""
+
+if ! npm run release; then
+    echo ""
+    echo "❌ Pre-push checks failed"
+    echo "Fix the issues or use 'git push --no-verify' to skip"
+    exit 1
+fi
+
+if ! npm run audit; then
+    echo ""
+    echo "❌ Dependency audit gate failed — run 'npm run audit' for details"
+    echo "Fix the issues or use 'git push --no-verify' to skip"
+    exit 1
+fi
+
+# main.js is committed to git — it must be rebuilt whenever src changes.
+# `npm run release` above already rebuilt it; drift means it was stale.
+if ! git diff --quiet -- main.js; then
+    echo ""
+    echo "❌ main.js is stale — 'npm run build' changed it"
+    echo "   Commit the rebuilt bundle, or use 'git push --no-verify' to skip"
+    exit 1
+fi
+
+echo ""
+echo "✅ Pre-push checks passed (same as CI)"
+exit 0

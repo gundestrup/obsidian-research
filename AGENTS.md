@@ -105,6 +105,14 @@ npm run security     # Semgrep local-rules scan (requires semgrep — brew insta
 npm run release      # lint + test + build + security (used before version bump)
 ```
 
+Git hooks live in `bin/hooks/` as tracked files; `bin/install-hooks.sh`
+enables them by setting `core.hooksPath` (run once after cloning):
+
+- `pre-commit` runs markdownlint/eslint on staged files plus a
+  `debugger`/`console.debug` check.
+- `pre-push` runs `npm run release` + `npm run audit`, then verifies the
+  committed `main.js` is in sync with the sources (mirrors CI).
+
 ## APIs used
 
 ### NCBI E-utilities (PubMed)

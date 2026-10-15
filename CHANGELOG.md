@@ -7,6 +7,13 @@
 - Dev-tooling bumps: `@types/node` 26.6.4, `eslint` 10.12.0, `@typescript-eslint/*` 8.71.1, `vitest` + `@vitest/coverage-v8` 5.0.3.
 - CI: Semgrep moved from an inline `pip3 install semgrep==1.176.0` pin to hashed `.github/requirements-ci.txt` (compiled from `requirements-ci.in`, Python 3.12), installed with `--require-hashes`. Bumped Semgrep to 1.180.0; the version is now Dependabot-visible via a new `pip` ecosystem entry for `/.github`.
 
+### Added
+
+- Tracked git hooks in `bin/hooks/` (`bin/install-hooks.sh` enables via
+  `core.hooksPath`): pre-commit lints staged files, pre-push runs the
+  full local gate (`npm run release` + `npm run audit` + `main.js`
+  bundle-sync check) mirroring CI.
+
 ### Fixed
 
 - `package.json` license corrected to the SPDX expression
