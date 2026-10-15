@@ -103,6 +103,7 @@ npm run test:watch   # Run vitest in watch mode
 npm run test:coverage # Run vitest with v8 coverage report
 npm run security     # Semgrep local-rules scan (requires semgrep — brew install semgrep)
 npm run release      # lint + test + build + security (used before version bump)
+npm run audit        # high-severity dependency audit gate (run before pushing)
 ```
 
 Git hooks live in `bin/hooks/` as tracked files; `bin/install-hooks.sh`
