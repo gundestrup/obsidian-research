@@ -10,9 +10,9 @@ updates:
       - dependency-name: typescript
         versions: [">=7.0.0"]
       - dependency-name: vitest
-        versions: [">=5.0.0"]
+        versions: [">=6.0.0"]
       - dependency-name: "@vitest/coverage-v8"
-        versions: [">=5.0.0"]
+        versions: [">=6.0.0"]
     target-branch: main
   - package-ecosystem: pip
     directory: /.github
