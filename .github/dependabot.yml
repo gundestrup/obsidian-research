@@ -14,3 +14,10 @@ updates:
       - dependency-name: "@vitest/coverage-v8"
         versions: [">=5.0.0"]
     target-branch: main
+  - package-ecosystem: pip
+    directory: /.github
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    target-branch: main
