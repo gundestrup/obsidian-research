@@ -3,15 +3,5 @@
     "package": "braces",
     "reason": "No patched release (all <=3.0.3 affected). Dev-only transitive dep of markdownlint-cli2 globbing; exploitation needs attacker-controlled glob patterns committed to the repo.",
     "expires": "2027-01-06"
-  },
-  "https://github.com/advisories/GHSA-vfgh-jcmw-g37q": {
-    "package": "markdown-it",
-    "reason": "Patched in 15.0.3 but that release is inside min-release-age=7 quarantine until 2026-10-23; bump overrides.markdownlint-cli2.markdown-it to ^15.0.3 once it ages in, then remove this entry. Dev-only (markdownlint-cli2).",
-    "expires": "2026-10-25"
-  },
-  "https://github.com/advisories/GHSA-gfr2-rv44-r23c": {
-    "package": "markdown-it",
-    "reason": "Patched in 15.0.3 but that release is inside min-release-age=7 quarantine until 2026-10-23; bump overrides.markdownlint-cli2.markdown-it to ^15.0.3 once it ages in, then remove this entry. Dev-only (markdownlint-cli2).",
-    "expires": "2026-10-25"
   }
 }
