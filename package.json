@@ -23,7 +23,7 @@
   "license": "AGPL-3.0-or-later",
   "devDependencies": {
     "@types/node": "^26.6.4",
-    "@typescript-eslint/eslint-plugin": "^8.71.1",
+    "@typescript-eslint/eslint-plugin": "^8.72.0",
     "@typescript-eslint/parser": "^8.72.0",
     "@vitest/coverage-v8": "^5.0.5",
     "esbuild": "^0.28.0",
