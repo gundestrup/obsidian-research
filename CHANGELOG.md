@@ -5,6 +5,8 @@
 ### Changed
 
 - Dev-tooling bumps: `@types/node` 26.6.4, `eslint` 10.12.0, `@typescript-eslint/*` 8.71.1, `vitest` + `@vitest/coverage-v8` 5.0.3.
+- Rate-limit delays now use Obsidian's sandbox global `sleep()` instead of a hand-rolled `window.setTimeout` helper.
+- Production bundle is now minified (`minify` in `esbuild.config.mjs`) — `main.js` drops from ~55 KB to ~31 KB.
 - CI: Semgrep moved from an inline `pip3 install semgrep==1.176.0` pin to hashed `.github/requirements-ci.txt` (compiled from `requirements-ci.in`, Python 3.12), installed with `--require-hashes`. Bumped Semgrep to 1.180.0; the version is now Dependabot-visible via a new `pip` ecosystem entry for `/.github`.
 
 ### Added
@@ -26,6 +28,9 @@
   (smol-toml 1.9.0, katex 0.18.2); allowlisted entries carry reasons
   and expiry — braces (unpatched upstream, dev-only) and source-map-js
   (patch pending `min-release-age` quarantine).
+- `re2js` overridden to `^2.8.7` (GHSA-gg6h-894w-4m9c, quadratic-time
+  DoS in lookbehind matching) — `markdownlint@0.42.0` exact-pins the
+  vulnerable 2.8.6, so the override forces 2.9.0. Dev-only reach.
 
 ## [1.4.14] - 2026-09-16
 
