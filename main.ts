@@ -50,7 +50,7 @@ export default class ResearchArticleFetcherPlugin extends Plugin {
 		return {
 			settings: this.settings,
 			requestFn: this.requestFn,
-			delay: (ms) => this.delay(ms),
+			delay: sleep,
 		};
 	}
 
@@ -162,10 +162,6 @@ export default class ResearchArticleFetcherPlugin extends Plugin {
 		console.error('Error in', context, error);
 		const message = error instanceof Error ? error.message : 'Unknown error occurred';
 		new Notice(`Error fetching article: ${message}`);
-	}
-
-	private async delay(ms: number): Promise<void> {
-		return new Promise(resolve => window.setTimeout(resolve, ms));
 	}
 
 	async fetchArticle(input: string) {
@@ -301,7 +297,7 @@ export default class ResearchArticleFetcherPlugin extends Plugin {
 		let kind: FailureKind = 'permanent';
 		try {
 			const info = await provider.fetch(id, this.fetchCtx);
-			await this.delay(provider.rateLimitDelay);
+			await sleep(provider.rateLimitDelay);
 			if (info && !isAlreadyCited(content, info)) {
 				return { content: provider.replaceUrl(content, id, formatCitation(info, provider)), processed: true };
 			}
@@ -341,7 +337,7 @@ export default class ResearchArticleFetcherPlugin extends Plugin {
 
 		try {
 			const outcomes = await provider.fetchMany(actionable, this.fetchCtx);
-			await this.delay(provider.rateLimitDelay);
+			await sleep(provider.rateLimitDelay);
 			for (const id of actionable) {
 				const outcome = outcomes.get(id);
 				if (isArticleInfo(outcome) && !isAlreadyCited(updatedContent, outcome)) {
