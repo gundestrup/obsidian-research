@@ -18,12 +18,12 @@ Fetch research article metadata from PubMed, PMC, DOI, arXiv, and Web of Science
 <!-- markdownlint-disable MD033 -->
 <picture>
   <source
-    srcset="docs/assets/obsidian-research-demo.avif"
+    srcset="https://raw.githubusercontent.com/gundestrup/obsidian-research/main/docs/assets/obsidian-research-demo.avif"
     type="image/avif">
   <source
-    srcset="docs/assets/obsidian-research-demo.webp"
+    srcset="https://raw.githubusercontent.com/gundestrup/obsidian-research/main/docs/assets/obsidian-research-demo.webp"
     type="image/webp">
-  <img src="docs/assets/obsidian-research-demo.png"
+  <img src="https://raw.githubusercontent.com/gundestrup/obsidian-research/main/docs/assets/obsidian-research-demo.png"
        alt="obsidian-research demo">
 </picture>
 <!-- markdownlint-enable MD033 -->
