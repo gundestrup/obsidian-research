@@ -1,6 +1,4 @@
-<!-- markdownlint-disable MD013 MD033 -->
 # Research Article Fetcher Plugin for Obsidian <a href="https://gundestrup.github.io/flow/"><img align="right" src="https://gundestrup.github.io/flow/assets/badges/part-of-flow.svg?v=2" alt="Part of Flow software" height="40"></a>
-<!-- markdownlint-enable MD013 MD033 -->
 
 Fetch research article metadata from PubMed, PMC, DOI, arXiv, and Web of Science links automatically.
 
