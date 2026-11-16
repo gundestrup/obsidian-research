@@ -28,7 +28,7 @@
     "@vitest/coverage-v8": "^5.1.0",
     "esbuild": "^0.28.0",
     "eslint": "^10.14.0",
-    "eslint-plugin-obsidianmd": "^0.4.0",
+    "eslint-plugin-obsidianmd": "^0.5.1",
     "markdownlint-cli2": "0.24.0",
     "obsidian": "1.14.4",
     "tslib": "^2.9.1",
