@@ -13,7 +13,7 @@ Fetch research article metadata from PubMed, PMC, DOI, arXiv, and Web of Science
 [![CodeQL](https://img.shields.io/badge/CodeQL-enabled-2c7a4b?logo=github&logoColor=white)](https://github.com/gundestrup/obsidian-research/security/code-scanning)
 [![Dependabot](https://img.shields.io/badge/Dependabot-enabled-025e8c?logo=dependabot&logoColor=white)](https://github.com/gundestrup/obsidian-research/security/dependabot)
 [![Obsidian](https://img.shields.io/badge/Obsidian-%E2%89%A51.13.1-7c3aed?logo=obsidian&logoColor=white)](https://obsidian.md)
-[![DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/gundestrup/obsidian-research)
+[<img src="https://devin.ai/assets/askdeepwiki.png" alt="DeepWiki" height="20"/>](https://deepwiki.com/gundestrup/obsidian-research)
 
 <!-- markdownlint-disable MD033 -->
 <picture>
