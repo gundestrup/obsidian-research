@@ -1,5 +1,14 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- Dev-tooling bumps: `eslint` 10.14.0 → 10.15.0, `@typescript-eslint/*`
+  8.72.1 → 8.73.0 (`min-release-age=7` filtered `typescript-eslint`
+  8.74.0, `eslint-plugin-obsidianmd` 0.6.0, `vitest` 5.1.1 — eligible
+  for the next sweep).
+
 ## [1.4.15] - 2026-10-30
 
 ### Changed
